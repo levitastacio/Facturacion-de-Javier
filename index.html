@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Facturación</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+<script src="js/vendor/jspdf.umd.min.js"></script>
+<script src="js/vendor/jspdf.plugin.autotable.min.js"></script>
+<script src="js/vendor/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<div id="app">
+
+  <header id="topbar">
+    <div id="brand">
+      <img id="brand-logo" alt="" hidden>
+      <span id="brand-name">Facturación</span>
+    </div>
+    <div id="topbar-actions">
+      <div id="backup-banner" hidden>
+        <span></span>
+        <button type="button" id="backup-banner-btn">Respaldar ahora</button>
+        <button type="button" id="backup-banner-dismiss" aria-label="Cerrar aviso">×</button>
+      </div>
+    </div>
+  </header>
+
+  <div id="shell">
+    <nav id="sidenav" aria-label="Secciones">
+      <a href="#dashboard" data-view="dashboard">Panel</a>
+      <a href="#invoices" data-view="invoices">Facturas</a>
+      <a href="#clients" data-view="clients">Clientes</a>
+      <a href="#catalog" data-view="catalog">Catálogo</a>
+      <a href="#payments" data-view="payments">Pagos</a>
+      <a href="#settings" data-view="settings">Ajustes</a>
+    </nav>
+
+    <main id="views">
+
+      <section id="view-dashboard" class="view">
+        <div class="view-header">
+          <h1>Panel</h1>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi-card">
+            <div class="kpi-label">Facturado este mes</div>
+            <div class="kpi-value" id="kpi-invoiced">$0.00</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Cobrado</div>
+            <div class="kpi-value accent-good" id="kpi-collected">$0.00</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Pendiente</div>
+            <div class="kpi-value accent-warn" id="kpi-pending">$0.00</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Vencidas</div>
+            <div class="kpi-value accent-bad" id="kpi-overdue">0</div>
+          </div>
+        </div>
+        <div class="dash-grid">
+          <div class="panel">
+            <h2>Ingresos — últimos 6 meses</h2>
+            <div id="revenue-chart" class="chart"></div>
+          </div>
+          <div class="panel">
+            <h2>Clientes principales</h2>
+            <div id="top-clients" class="stack-list"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header-row">
+            <h2>Facturas recientes</h2>
+            <a href="#invoices">Ver todas →</a>
+          </div>
+          <div class="table-wrap">
+            <table id="dash-invoices-table">
+              <thead><tr><th>Folio</th><th>Cliente</th><th>Vence</th><th>Total</th><th>Saldo</th><th>Estado</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-invoices" class="view">
+        <div class="view-header">
+          <h1>Facturas</h1>
+          <div class="view-actions">
+            <div class="dropdown">
+              <button type="button" class="btn btn-ghost" id="export-invoices-btn">Exportar ▾</button>
+              <div class="dropdown-menu" id="export-invoices-menu">
+                <button type="button" data-format="csv-simple">CSV simple</button>
+                <button type="button" data-format="csv-quickbooks">CSV para QuickBooks</button>
+                <button type="button" data-format="xlsx">Excel (.xlsx)</button>
+              </div>
+            </div>
+            <button type="button" class="btn btn-primary" id="new-invoice-btn">+ Nueva factura</button>
+          </div>
+        </div>
+        <div class="filters-row">
+          <label class="visually-hidden" for="invoice-search">Buscar factura</label>
+          <input type="search" id="invoice-search" placeholder="Buscar por folio o cliente...">
+          <select id="invoice-status-filter" aria-label="Filtrar por estado">
+            <option value="all">Todos los estados</option>
+            <option value="pending">Pendiente</option>
+            <option value="paid">Pagada</option>
+            <option value="overdue">Vencida</option>
+          </select>
+          <label class="visually-hidden" for="invoice-from">Desde</label>
+          <input type="date" id="invoice-from" aria-label="Desde">
+          <label class="visually-hidden" for="invoice-to">Hasta</label>
+          <input type="date" id="invoice-to" aria-label="Hasta">
+          <button type="button" class="btn btn-ghost" id="invoice-filter-clear">Limpiar</button>
+        </div>
+        <div class="table-wrap">
+          <table id="invoices-table">
+            <thead><tr><th>Folio</th><th>Cliente</th><th>Emitida</th><th>Vence</th><th>Total</th><th>Saldo</th><th>Estado</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="empty-state" id="invoices-empty" hidden>No hay facturas que coincidan con la búsqueda.</p>
+      </section>
+
+      <section id="view-clients" class="view">
+        <div class="view-header">
+          <h1>Clientes</h1>
+          <div class="view-actions">
+            <button type="button" class="btn btn-primary" id="new-client-btn">+ Nuevo cliente</button>
+          </div>
+        </div>
+        <div class="filters-row">
+          <label class="visually-hidden" for="client-search">Buscar cliente</label>
+          <input type="search" id="client-search" placeholder="Buscar por nombre, correo o teléfono...">
+        </div>
+        <div class="table-wrap">
+          <table id="clients-table">
+            <thead><tr><th>Nombre</th><th>Correo</th><th>Teléfono</th><th>EIN/Tax ID</th><th>Saldo pendiente</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="empty-state" id="clients-empty" hidden>No hay clientes que coincidan con la búsqueda.</p>
+      </section>
+
+      <section id="view-catalog" class="view">
+        <div class="view-header">
+          <h1>Catálogo</h1>
+          <div class="view-actions">
+            <button type="button" class="btn btn-primary" id="new-product-btn">+ Nuevo producto o servicio</button>
+          </div>
+        </div>
+        <div class="filters-row">
+          <label class="visually-hidden" for="product-search">Buscar producto</label>
+          <input type="search" id="product-search" placeholder="Buscar por nombre...">
+        </div>
+        <div class="table-wrap">
+          <table id="catalog-table">
+            <thead><tr><th>Nombre</th><th>Descripción</th><th>Precio</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="empty-state" id="catalog-empty" hidden>Aún no agregas productos o servicios.</p>
+      </section>
+
+      <section id="view-payments" class="view">
+        <div class="view-header">
+          <h1>Pagos</h1>
+        </div>
+        <div class="filters-row">
+          <label class="visually-hidden" for="payment-search">Buscar pago</label>
+          <input type="search" id="payment-search" placeholder="Buscar por cliente o folio...">
+          <label class="visually-hidden" for="payment-from">Desde</label>
+          <input type="date" id="payment-from" aria-label="Desde">
+          <label class="visually-hidden" for="payment-to">Hasta</label>
+          <input type="date" id="payment-to" aria-label="Hasta">
+        </div>
+        <div class="table-wrap">
+          <table id="payments-table">
+            <thead><tr><th>Fecha</th><th>Folio</th><th>Cliente</th><th>Método</th><th>Monto</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="empty-state" id="payments-empty" hidden>Aún no se han registrado pagos.</p>
+      </section>
+
+      <section id="view-settings" class="view">
+        <div class="view-header">
+          <h1>Ajustes</h1>
+        </div>
+
+        <div class="panel">
+          <h2>Compañía</h2>
+          <form id="settings-company-form" class="form-grid">
+            <label>Nombre de la compañía
+              <input type="text" name="companyName" required>
+            </label>
+            <label>EIN / Tax ID
+              <input type="text" name="ein" placeholder="12-3456789">
+            </label>
+            <label>Logo
+              <input type="file" name="logo" accept="image/*">
+            </label>
+            <div id="logo-preview-wrap" hidden>
+              <img id="logo-preview" alt="Vista previa del logo">
+              <button type="button" id="logo-remove-btn" class="btn btn-ghost btn-small">Quitar logo</button>
+            </div>
+            <button type="submit" class="btn btn-primary">Guardar compañía</button>
+          </form>
+        </div>
+
+        <div class="panel">
+          <h2>Facturación</h2>
+          <form id="settings-invoicing-form" class="form-grid">
+            <label>Tasa de sales tax por defecto (%)
+              <input type="number" name="taxRate" min="0" max="100" step="0.001" required>
+            </label>
+            <label>Días de vencimiento por defecto
+              <input type="number" name="dueDays" min="0" max="365" step="1" required>
+            </label>
+            <label>Prefijo de folio
+              <input type="text" name="invoicePrefix" required>
+            </label>
+            <label>Próximo número de folio
+              <input type="number" name="nextInvoiceNumber" min="1" step="1" required>
+            </label>
+            <p class="field-hint">El folio se ve así: <strong id="folio-preview">INV-0001</strong>. Cambiar estos valores solo afecta a las próximas facturas.</p>
+            <button type="submit" class="btn btn-primary">Guardar facturación</button>
+          </form>
+        </div>
+
+        <div class="panel">
+          <h2>Respaldo de datos</h2>
+          <p class="field-hint">Todos los datos se guardan solo en este navegador. Exporta un respaldo con frecuencia — es la única forma de recuperarlos si cambias de dispositivo o borras el navegador.</p>
+          <p id="last-backup-line" class="field-hint"></p>
+          <div class="button-row">
+            <button type="button" class="btn btn-primary" id="export-backup-btn">Exportar respaldo completo (JSON)</button>
+            <label class="btn btn-ghost file-btn">Importar respaldo
+              <input type="file" id="import-backup-input" accept="application/json" hidden>
+            </label>
+          </div>
+          <form id="settings-backup-form" class="form-grid" style="margin-top:16px;">
+            <label>Recordarme cada (días)
+              <input type="number" name="backupReminderDays" min="1" max="90" step="1" required>
+            </label>
+            <button type="submit" class="btn btn-ghost">Guardar</button>
+          </form>
+        </div>
+
+        <div class="panel">
+          <h2>Varios usuarios (socios)</h2>
+          <p class="field-hint">Hoy cada dispositivo guarda su propia copia de los datos, en su propio navegador — no se sincroniza sola entre tú y tus socios. Mientras tanto, usen "Exportar respaldo" e "Importar respaldo" para pasarse la información al día. Una sincronización automática en tiempo real necesita una base de datos en la nube — es un proyecto aparte que podemos construir cuando lo decidan.</p>
+        </div>
+
+        <div class="panel panel-danger">
+          <h2>Zona de riesgo</h2>
+          <p class="field-hint">Esto borra todos tus clientes, facturas, pagos y catálogo de este navegador. No se puede deshacer.</p>
+          <button type="button" class="btn btn-danger" id="reset-data-btn">Borrar todos los datos</button>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast-root" aria-live="polite"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
