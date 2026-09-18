@@ -99,7 +99,7 @@
                 <button type="button" data-format="xlsx">Excel (.xlsx)</button>
               </div>
             </div>
-            <button type="button" class="btn btn-primary" id="new-invoice-btn">+ Nueva factura</button>
+            <button type="button" class="btn-pill" id="new-invoice-btn">+ Nueva factura</button>
           </div>
         </div>
         <div class="filters-row">
@@ -130,7 +130,7 @@
         <div class="view-header">
           <h1>Cotizaciones</h1>
           <div class="view-actions">
-            <button type="button" class="btn btn-primary" id="new-quote-btn">+ Nueva cotización</button>
+            <button type="button" class="btn-pill" id="new-quote-btn">+ Nueva cotización</button>
           </div>
         </div>
         <div class="filters-row">
@@ -158,7 +158,7 @@
         <div class="view-header">
           <h1>Clientes</h1>
           <div class="view-actions">
-            <button type="button" class="btn btn-primary" id="new-client-btn">+ Nuevo cliente</button>
+            <button type="button" class="btn-pill" id="new-client-btn">+ Nuevo cliente</button>
           </div>
         </div>
         <div class="filters-row">
@@ -178,7 +178,7 @@
         <div class="view-header">
           <h1>Catálogo</h1>
           <div class="view-actions">
-            <button type="button" class="btn btn-primary" id="new-product-btn">+ Nuevo producto o servicio</button>
+            <button type="button" class="btn-pill" id="new-product-btn">+ Nuevo producto o servicio</button>
           </div>
         </div>
         <div class="filters-row">
@@ -317,6 +317,29 @@
 
     </main>
   </div>
+
+  <nav id="bottombar" aria-label="Secciones móviles">
+    <button type="button" data-view="dashboard" aria-label="Panel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>
+      <span>Panel</span>
+    </button>
+    <button type="button" data-view="invoices" aria-label="Facturas">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path><path d="M9 12h6M9 16h6M9 8h3"></path></svg>
+      <span>Facturas</span>
+    </button>
+    <button type="button" data-view="quotes" aria-label="Cotizaciones">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13l3 3v13H4z"></path><path d="M8 10h8M8 14h5"></path></svg>
+      <span>Cotizar</span>
+    </button>
+    <button type="button" data-view="clients" aria-label="Clientes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5"></path></svg>
+      <span>Clientes</span>
+    </button>
+    <button type="button" id="more-tab-btn" aria-label="Más">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="4" width="6" height="6" rx="1"></rect><rect x="4" y="14" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect></svg>
+      <span>Más</span>
+    </button>
+  </nav>
 </div>
 
 <div id="modal-root"></div>

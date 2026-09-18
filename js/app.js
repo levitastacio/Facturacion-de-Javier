@@ -193,6 +193,11 @@
     document.querySelectorAll('#sidenav a').forEach(function (a) {
       a.classList.toggle('active', a.dataset.view === name);
     });
+    var moreViews = ['catalog', 'payments', 'settings'];
+    document.querySelectorAll('#bottombar button[data-view]').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.view === name);
+    });
+    document.getElementById('more-tab-btn').classList.toggle('active', moreViews.indexOf(name) !== -1);
     renderView(name);
   }
 
@@ -650,13 +655,25 @@
   }
   function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
 
+  function openMoreSheet() {
+    openModal(
+      '<div class="modal-header"><h2>Más</h2>' +
+      '<button type="button" class="modal-close" data-close aria-label="Cerrar">‹</button></div>' +
+      '<div class="more-sheet-list">' +
+      '<a href="#catalog" data-close>Catálogo</a>' +
+      '<a href="#payments" data-close>Pagos</a>' +
+      '<a href="#settings" data-close>Ajustes</a>' +
+      '</div>'
+    );
+  }
+
   // ---------- client modal ----------
 
   function openClientModal(client) {
     var isEdit = !!client;
     client = client || { name: '', email: '', phone: '', taxId: '', address: '' };
     var html = '<div class="modal-header"><h2>' + (isEdit ? 'Editar cliente' : 'Nuevo cliente') + '</h2>' +
-      '<button type="button" class="modal-close" data-close aria-label="Cerrar">×</button></div>' +
+      '<button type="button" class="modal-close" data-close aria-label="Cerrar">‹</button></div>' +
       '<form id="client-form" class="form-grid" style="max-width:none;">' +
       '<label>Nombre<input type="text" name="name" required value="' + escapeHTML(client.name) + '"></label>' +
       '<label>Correo<input type="email" name="email" value="' + escapeHTML(client.email) + '"></label>' +
@@ -714,7 +731,7 @@
     product = product || { name: '', description: '', unit: '', price: '' };
     openModal(
       '<div class="modal-header"><h2>' + (isEdit ? 'Editar producto' : 'Nuevo producto o servicio') + '</h2>' +
-      '<button type="button" class="modal-close" data-close aria-label="Cerrar">×</button></div>' +
+      '<button type="button" class="modal-close" data-close aria-label="Cerrar">‹</button></div>' +
       '<form id="product-form" class="form-grid" style="max-width:none;">' +
       '<label>Nombre<input type="text" name="name" required value="' + escapeHTML(product.name) + '"></label>' +
       '<label>Descripción<input type="text" name="description" value="' + escapeHTML(product.description) + '"></label>' +
@@ -754,34 +771,65 @@
     return { catalogId: '', description: '', qty: 1, unit: '', price: 0 };
   }
 
+  var activeItemIndex = null;
+
+  function itemEditorHTML(item, cls) {
+    item = item || blankItem();
+    var options = '<option value="">Personalizado</option>' + state.products.map(function (p) {
+      return '<option value="' + p.id + '"' + (item.catalogId === p.id ? ' selected' : '') + '>' + escapeHTML(p.name) + '</option>';
+    }).join('');
+    return '<div class="item-editor-card">' +
+      '<select class="' + cls + '-catalog">' + options + '</select>' +
+      '<input type="text" class="' + cls + '-desc" placeholder="Descripción" value="' + escapeHTML(item.description) + '">' +
+      '<div class="ie-row">' +
+      '<input type="number" class="' + cls + '-qty" min="0" step="0.01" placeholder="Cant." value="' + item.qty + '">' +
+      '<input type="text" class="' + cls + '-unit" placeholder="Unidad" value="' + escapeHTML(item.unit || '') + '">' +
+      '<input type="number" class="' + cls + '-price" min="0" step="0.01" placeholder="Precio" value="' + item.price + '">' +
+      '</div>' +
+      '<div class="ie-actions">' +
+      '<button type="button" class="btn btn-ghost btn-small" id="' + cls + '-editor-cancel">Cancelar</button>' +
+      '<button type="button" class="btn-pill btn-pill-ghost" id="' + cls + '-editor-save" style="width:auto;padding:8px 18px;min-height:36px;">Guardar concepto</button>' +
+      '</div></div>';
+  }
+
+  function itemRowHTML(item, idx) {
+    return '<div class="item-row" data-edit-item="' + idx + '">' +
+      '<div class="item-row-main"><div class="item-row-desc">' + escapeHTML(item.description) + '</div>' +
+      '<div class="item-row-sub">' + item.qty + (item.unit ? ' ' + escapeHTML(item.unit) : '') + ' × ' + money(item.price) + '</div></div>' +
+      '<div class="item-row-amount">' + money((Number(item.qty) || 0) * (Number(item.price) || 0)) + '</div>' +
+      '<button type="button" class="item-row-delete" data-remove-item="' + idx + '" aria-label="Eliminar concepto">🗑</button>' +
+      '</div>';
+  }
+
   function openInvoiceModal(invoice) {
     var isEdit = !!invoice;
     if (!state.clients.length) {
       toast('Primero agrega al menos un cliente.');
       return;
     }
-    draftItems = isEdit ? invoice.items.map(function (it) { return Object.assign({}, it); }) : [blankItem()];
+    draftItems = isEdit ? invoice.items.map(function (it) { return Object.assign({}, it); }) : [];
+    activeItemIndex = null;
     var issueDate = isEdit ? invoice.issueDate : todayISO();
     var dueDate = isEdit ? invoice.dueDate : addDaysISO(issueDate, state.settings.dueDays);
     var taxRate = isEdit ? invoice.taxRate : state.settings.taxRate;
     var clientId = isEdit ? invoice.clientId : state.clients[0].id;
 
     var html = '<div class="modal-header"><h2>' + (isEdit ? 'Factura ' + escapeHTML(invoice.number) : 'Nueva factura') + '</h2>' +
-      '<button type="button" class="modal-close" data-close aria-label="Cerrar">×</button></div>' +
+      '<button type="button" class="modal-close" data-close aria-label="Cerrar">‹</button></div>' +
       '<form id="invoice-form">' +
       '<div class="form-grid" style="max-width:none;">' +
-      '<label>Cliente<select name="clientId">' + state.clients.map(function (c) {
+      '<label>Cliente<select name="clientId" class="select-pill">' + state.clients.map(function (c) {
         return '<option value="' + c.id + '"' + (c.id === clientId ? ' selected' : '') + '>' + escapeHTML(c.name) + '</option>';
       }).join('') + '</select></label>' +
-      '<div style="display:flex;gap:14px;">' +
+      '<div class="field-row-3">' +
       '<label style="flex:1;">Emitida<input type="date" name="issueDate" value="' + issueDate + '"></label>' +
       '<label style="flex:1;">Vence<input type="date" name="dueDate" value="' + dueDate + '"></label>' +
       '<label style="flex:1;">Sales tax %<input type="number" name="taxRate" min="0" max="100" step="0.001" value="' + taxRate + '"></label>' +
       '</div></div>' +
       '<div class="modal-section"><h3>Conceptos</h3>' +
-      '<table class="line-items-table" id="line-items-table"><thead><tr><th>Producto</th><th>Descripción</th><th>Cant.</th><th>Unidad</th><th>Precio</th><th>Total</th><th></th></tr></thead>' +
-      '<tbody id="line-items-body"></tbody></table>' +
-      '<button type="button" class="btn btn-ghost btn-small" id="add-line-btn">+ Agregar línea</button>' +
+      '<div class="item-list" id="item-list"></div>' +
+      '<div id="item-editor"></div>' +
+      '<button type="button" class="btn-pill" id="add-item-btn">+ Agregar concepto</button>' +
       '<div class="totals-block" id="totals-block"></div>' +
       '</div>';
 
@@ -811,22 +859,19 @@
 
     var form = document.getElementById('invoice-form');
 
-    function renderLineItems() {
-      document.getElementById('line-items-body').innerHTML = draftItems.map(function (item, idx) {
-        var options = '<option value="">Personalizado</option>' + state.products.map(function (p) {
-          return '<option value="' + p.id + '"' + (item.catalogId === p.id ? ' selected' : '') + '>' + escapeHTML(p.name) + '</option>';
-        }).join('');
-        return '<tr data-idx="' + idx + '">' +
-          '<td><select class="li-catalog">' + options + '</select></td>' +
-          '<td><input type="text" class="li-desc" value="' + escapeHTML(item.description) + '"></td>' +
-          '<td><input type="number" class="li-qty qty" min="0" step="0.01" value="' + item.qty + '"></td>' +
-          '<td><input type="text" class="li-unit unit" value="' + escapeHTML(item.unit || '') + '" placeholder="hrs"></td>' +
-          '<td><input type="number" class="li-price price" min="0" step="0.01" value="' + item.price + '"></td>' +
-          '<td class="num">' + money((Number(item.qty) || 0) * (Number(item.price) || 0)) + '</td>' +
-          '<td><button type="button" class="line-item-remove" data-remove="' + idx + '" aria-label="Quitar línea">×</button></td>' +
-          '</tr>';
-      }).join('');
+    function renderItemList() {
+      var el = document.getElementById('item-list');
+      el.innerHTML = draftItems.length
+        ? draftItems.map(function (item, idx) { return itemRowHTML(item, idx); }).join('')
+        : '<p class="field-hint">Aún no agregas ningún concepto.</p>';
       renderTotals();
+    }
+
+    function renderItemEditor() {
+      var el = document.getElementById('item-editor');
+      if (activeItemIndex === null) { el.innerHTML = ''; return; }
+      var item = activeItemIndex === 'new' ? null : draftItems[activeItemIndex];
+      el.innerHTML = itemEditorHTML(item, 'ie');
     }
 
     function renderTotals() {
@@ -858,49 +903,72 @@
       document.getElementById('payment-amount').value = balance > 0 ? balance : '';
     }
 
-    renderLineItems();
+    renderItemList();
     renderPaymentsSection();
 
     form.addEventListener('input', function (e) {
-      var tr = e.target.closest('tr[data-idx]');
-      if (tr) {
-        var idx = Number(tr.dataset.idx);
-        if (e.target.classList.contains('li-desc')) draftItems[idx].description = e.target.value;
-        if (e.target.classList.contains('li-qty')) draftItems[idx].qty = e.target.value;
-        if (e.target.classList.contains('li-unit')) draftItems[idx].unit = e.target.value;
-        if (e.target.classList.contains('li-price')) draftItems[idx].price = e.target.value;
-        tr.querySelector('.num').textContent = money((Number(draftItems[idx].qty) || 0) * (Number(draftItems[idx].price) || 0));
-        renderTotals();
-        renderPaymentsSection();
-      }
       if (e.target.name === 'taxRate') { renderTotals(); renderPaymentsSection(); }
     });
 
     form.addEventListener('change', function (e) {
-      if (e.target.classList.contains('li-catalog')) {
-        var tr = e.target.closest('tr[data-idx]');
-        var idx = Number(tr.dataset.idx);
+      if (e.target.classList.contains('ie-catalog')) {
         var pid = e.target.value;
-        draftItems[idx].catalogId = pid;
+        var editorEl = document.getElementById('item-editor');
         if (pid) {
           var p = getProduct(pid);
-          if (p) { draftItems[idx].description = p.description || p.name; draftItems[idx].price = p.price; draftItems[idx].unit = p.unit || ''; }
+          if (p) {
+            editorEl.querySelector('.ie-desc').value = p.description || p.name;
+            editorEl.querySelector('.ie-price').value = p.price;
+            editorEl.querySelector('.ie-unit').value = p.unit || '';
+          }
         }
-        renderLineItems();
       }
     });
 
-    document.getElementById('add-line-btn').addEventListener('click', function () {
-      draftItems.push(blankItem());
-      renderLineItems();
+    document.getElementById('add-item-btn').addEventListener('click', function () {
+      activeItemIndex = 'new';
+      renderItemEditor();
     });
 
     form.addEventListener('click', function (e) {
-      var idx = e.target.dataset.remove;
-      if (idx !== undefined) {
-        draftItems.splice(Number(idx), 1);
-        if (!draftItems.length) draftItems.push(blankItem());
-        renderLineItems();
+      var delBtn = e.target.closest('[data-remove-item]');
+      if (delBtn) {
+        var delIdx = Number(delBtn.dataset.removeItem);
+        draftItems.splice(delIdx, 1);
+        if (activeItemIndex === delIdx) activeItemIndex = null;
+        renderItemList();
+        renderItemEditor();
+        renderPaymentsSection();
+        return;
+      }
+      var editBtn = e.target.closest('[data-edit-item]');
+      if (editBtn) {
+        activeItemIndex = Number(editBtn.dataset.editItem);
+        renderItemEditor();
+        return;
+      }
+      if (e.target.id === 'ie-editor-cancel') {
+        activeItemIndex = null;
+        renderItemEditor();
+        return;
+      }
+      if (e.target.id === 'ie-editor-save') {
+        var editorEl = document.getElementById('item-editor');
+        var newItem = {
+          catalogId: editorEl.querySelector('.ie-catalog').value || '',
+          description: editorEl.querySelector('.ie-desc').value.trim(),
+          qty: Number(editorEl.querySelector('.ie-qty').value) || 0,
+          unit: editorEl.querySelector('.ie-unit').value.trim(),
+          price: Number(editorEl.querySelector('.ie-price').value) || 0
+        };
+        if (!newItem.description || newItem.qty <= 0) { toast('Ponle una descripción y una cantidad mayor a 0.'); return; }
+        if (activeItemIndex === 'new') draftItems.push(newItem);
+        else draftItems[activeItemIndex] = newItem;
+        activeItemIndex = null;
+        renderItemList();
+        renderItemEditor();
+        renderPaymentsSection();
+        return;
       }
       var pidx = e.target.dataset.removePayment;
       if (pidx !== undefined) {
@@ -974,7 +1042,8 @@
       toast('Primero agrega al menos un cliente.');
       return;
     }
-    quoteDraftItems = isEdit ? quote.items.map(function (it) { return Object.assign({}, it); }) : [blankItem()];
+    quoteDraftItems = isEdit ? quote.items.map(function (it) { return Object.assign({}, it); }) : [];
+    activeItemIndex = null;
     var issueDate = isEdit ? quote.issueDate : todayISO();
     var expiryDate = isEdit ? quote.expiryDate : addDaysISO(issueDate, 30);
     var taxRate = isEdit ? quote.taxRate : state.settings.taxRate;
@@ -982,7 +1051,7 @@
     var status = isEdit ? quote.status : 'draft';
 
     var html = '<div class="modal-header"><h2>' + (isEdit ? 'Cotización ' + escapeHTML(quote.number) : 'Nueva cotización') + '</h2>' +
-      '<button type="button" class="modal-close" data-close aria-label="Cerrar">×</button></div>';
+      '<button type="button" class="modal-close" data-close aria-label="Cerrar">‹</button></div>';
 
     if (isEdit && quote.status === 'converted' && quote.convertedInvoiceId && getInvoice(quote.convertedInvoiceId)) {
       html += '<div class="convert-banner"><span>Ya se convirtió en la factura ' + escapeHTML(getInvoice(quote.convertedInvoiceId).number) + '.</span>' +
@@ -991,10 +1060,10 @@
 
     html += '<form id="quote-form">' +
       '<div class="form-grid" style="max-width:none;">' +
-      '<label>Cliente<select name="clientId">' + state.clients.map(function (c) {
+      '<label>Cliente<select name="clientId" class="select-pill">' + state.clients.map(function (c) {
         return '<option value="' + c.id + '"' + (c.id === clientId ? ' selected' : '') + '>' + escapeHTML(c.name) + '</option>';
       }).join('') + '</select></label>' +
-      '<div style="display:flex;gap:14px;">' +
+      '<div class="field-row-3">' +
       '<label style="flex:1;">Emitida<input type="date" name="issueDate" value="' + issueDate + '"></label>' +
       '<label style="flex:1;">Vence<input type="date" name="expiryDate" value="' + expiryDate + '"></label>' +
       '<label style="flex:1;">Sales tax %<input type="number" name="taxRate" min="0" max="100" step="0.001" value="' + taxRate + '"></label>' +
@@ -1007,9 +1076,9 @@
     }
     html += '</div>' +
       '<div class="modal-section"><h3>Conceptos</h3>' +
-      '<table class="line-items-table" id="quote-line-items-table"><thead><tr><th>Producto</th><th>Descripción</th><th>Cant.</th><th>Unidad</th><th>Precio</th><th>Total</th><th></th></tr></thead>' +
-      '<tbody id="quote-line-items-body"></tbody></table>' +
-      '<button type="button" class="btn btn-ghost btn-small" id="add-quote-line-btn">+ Agregar línea</button>' +
+      '<div class="item-list" id="quote-item-list"></div>' +
+      '<div id="quote-item-editor"></div>' +
+      '<button type="button" class="btn-pill" id="add-quote-item-btn">+ Agregar concepto</button>' +
       '<div class="totals-block" id="quote-totals-block"></div>' +
       '</div>';
 
@@ -1027,22 +1096,19 @@
     openModal(html);
     var form = document.getElementById('quote-form');
 
-    function renderQuoteLineItems() {
-      document.getElementById('quote-line-items-body').innerHTML = quoteDraftItems.map(function (item, idx) {
-        var options = '<option value="">Personalizado</option>' + state.products.map(function (p) {
-          return '<option value="' + p.id + '"' + (item.catalogId === p.id ? ' selected' : '') + '>' + escapeHTML(p.name) + '</option>';
-        }).join('');
-        return '<tr data-idx="' + idx + '">' +
-          '<td><select class="li-catalog">' + options + '</select></td>' +
-          '<td><input type="text" class="li-desc" value="' + escapeHTML(item.description) + '"></td>' +
-          '<td><input type="number" class="li-qty qty" min="0" step="0.01" value="' + item.qty + '"></td>' +
-          '<td><input type="text" class="li-unit unit" value="' + escapeHTML(item.unit || '') + '" placeholder="hrs"></td>' +
-          '<td><input type="number" class="li-price price" min="0" step="0.01" value="' + item.price + '"></td>' +
-          '<td class="num">' + money((Number(item.qty) || 0) * (Number(item.price) || 0)) + '</td>' +
-          '<td><button type="button" class="line-item-remove" data-remove="' + idx + '" aria-label="Quitar línea">×</button></td>' +
-          '</tr>';
-      }).join('');
+    function renderQuoteItemList() {
+      var el = document.getElementById('quote-item-list');
+      el.innerHTML = quoteDraftItems.length
+        ? quoteDraftItems.map(function (item, idx) { return itemRowHTML(item, idx); }).join('')
+        : '<p class="field-hint">Aún no agregas ningún concepto.</p>';
       renderQuoteTotals();
+    }
+
+    function renderQuoteItemEditor() {
+      var el = document.getElementById('quote-item-editor');
+      if (activeItemIndex === null) { el.innerHTML = ''; return; }
+      var item = activeItemIndex === 'new' ? null : quoteDraftItems[activeItemIndex];
+      el.innerHTML = itemEditorHTML(item, 'qie');
     }
 
     function renderQuoteTotals() {
@@ -1055,47 +1121,69 @@
         '<div class="totals-row grand"><span>Total</span><span>' + money(subtotal + tax) + '</span></div>';
     }
 
-    renderQuoteLineItems();
+    renderQuoteItemList();
 
     form.addEventListener('input', function (e) {
-      var tr = e.target.closest('tr[data-idx]');
-      if (tr) {
-        var idx = Number(tr.dataset.idx);
-        if (e.target.classList.contains('li-desc')) quoteDraftItems[idx].description = e.target.value;
-        if (e.target.classList.contains('li-qty')) quoteDraftItems[idx].qty = e.target.value;
-        if (e.target.classList.contains('li-unit')) quoteDraftItems[idx].unit = e.target.value;
-        if (e.target.classList.contains('li-price')) quoteDraftItems[idx].price = e.target.value;
-        tr.querySelector('.num').textContent = money((Number(quoteDraftItems[idx].qty) || 0) * (Number(quoteDraftItems[idx].price) || 0));
-        renderQuoteTotals();
-      }
       if (e.target.name === 'taxRate') renderQuoteTotals();
     });
 
     form.addEventListener('change', function (e) {
-      if (e.target.classList.contains('li-catalog')) {
-        var tr = e.target.closest('tr[data-idx]');
-        var idx = Number(tr.dataset.idx);
+      if (e.target.classList.contains('qie-catalog')) {
         var pid = e.target.value;
-        quoteDraftItems[idx].catalogId = pid;
+        var editorEl = document.getElementById('quote-item-editor');
         if (pid) {
           var p = getProduct(pid);
-          if (p) { quoteDraftItems[idx].description = p.description || p.name; quoteDraftItems[idx].price = p.price; quoteDraftItems[idx].unit = p.unit || ''; }
+          if (p) {
+            editorEl.querySelector('.qie-desc').value = p.description || p.name;
+            editorEl.querySelector('.qie-price').value = p.price;
+            editorEl.querySelector('.qie-unit').value = p.unit || '';
+          }
         }
-        renderQuoteLineItems();
       }
     });
 
-    document.getElementById('add-quote-line-btn').addEventListener('click', function () {
-      quoteDraftItems.push(blankItem());
-      renderQuoteLineItems();
+    document.getElementById('add-quote-item-btn').addEventListener('click', function () {
+      activeItemIndex = 'new';
+      renderQuoteItemEditor();
     });
 
     form.addEventListener('click', function (e) {
-      var idx = e.target.dataset.remove;
-      if (idx !== undefined) {
-        quoteDraftItems.splice(Number(idx), 1);
-        if (!quoteDraftItems.length) quoteDraftItems.push(blankItem());
-        renderQuoteLineItems();
+      var delBtn = e.target.closest('[data-remove-item]');
+      if (delBtn) {
+        var delIdx = Number(delBtn.dataset.removeItem);
+        quoteDraftItems.splice(delIdx, 1);
+        if (activeItemIndex === delIdx) activeItemIndex = null;
+        renderQuoteItemList();
+        renderQuoteItemEditor();
+        return;
+      }
+      var editBtn = e.target.closest('[data-edit-item]');
+      if (editBtn) {
+        activeItemIndex = Number(editBtn.dataset.editItem);
+        renderQuoteItemEditor();
+        return;
+      }
+      if (e.target.id === 'qie-editor-cancel') {
+        activeItemIndex = null;
+        renderQuoteItemEditor();
+        return;
+      }
+      if (e.target.id === 'qie-editor-save') {
+        var editorEl = document.getElementById('quote-item-editor');
+        var newItem = {
+          catalogId: editorEl.querySelector('.qie-catalog').value || '',
+          description: editorEl.querySelector('.qie-desc').value.trim(),
+          qty: Number(editorEl.querySelector('.qie-qty').value) || 0,
+          unit: editorEl.querySelector('.qie-unit').value.trim(),
+          price: Number(editorEl.querySelector('.qie-price').value) || 0
+        };
+        if (!newItem.description || newItem.qty <= 0) { toast('Ponle una descripción y una cantidad mayor a 0.'); return; }
+        if (activeItemIndex === 'new') quoteDraftItems.push(newItem);
+        else quoteDraftItems[activeItemIndex] = newItem;
+        activeItemIndex = null;
+        renderQuoteItemList();
+        renderQuoteItemEditor();
+        return;
       }
     });
 
@@ -1383,6 +1471,11 @@
       var a = e.target.closest('a[data-view]');
       if (a) { location.hash = a.dataset.view; }
     });
+    document.getElementById('bottombar').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-view]');
+      if (b) { location.hash = b.dataset.view; }
+    });
+    document.getElementById('more-tab-btn').addEventListener('click', openMoreSheet);
     window.addEventListener('hashchange', function () { setView(currentViewFromHash()); });
 
     document.getElementById('new-invoice-btn').addEventListener('click', function () { openInvoiceModal(null); });
