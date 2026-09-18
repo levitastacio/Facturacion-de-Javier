@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Facturación</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="css/styles.css">
 <script src="js/vendor/jspdf.umd.min.js"></script>
 <script src="js/vendor/jspdf.plugin.autotable.min.js"></script>
@@ -78,12 +77,7 @@
             <h2>Facturas recientes</h2>
             <a href="#invoices">Ver todas →</a>
           </div>
-          <div class="table-wrap">
-            <table id="dash-invoices-table">
-              <thead><tr><th>Folio</th><th>Cliente</th><th>Vence</th><th>Total</th><th>Saldo</th><th>Estado</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
+          <div class="list-card" id="dash-invoices-list"></div>
         </div>
       </section>
 
@@ -117,12 +111,7 @@
           <input type="date" id="invoice-to" aria-label="Hasta">
           <button type="button" class="btn btn-ghost" id="invoice-filter-clear">Limpiar</button>
         </div>
-        <div class="table-wrap">
-          <table id="invoices-table">
-            <thead><tr><th>Folio</th><th>Cliente</th><th>Emitida</th><th>Vence</th><th>Total</th><th>Saldo</th><th>Estado</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <div class="list-card" id="invoices-list"></div>
         <p class="empty-state" id="invoices-empty" hidden>No hay facturas que coincidan con la búsqueda.</p>
       </section>
 
@@ -145,12 +134,7 @@
             <option value="converted">Convertida</option>
           </select>
         </div>
-        <div class="table-wrap">
-          <table id="quotes-table">
-            <thead><tr><th>Número</th><th>Cliente</th><th>Emitida</th><th>Vence</th><th>Total</th><th>Estado</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <div class="list-card" id="quotes-list"></div>
         <p class="empty-state" id="quotes-empty" hidden>No hay cotizaciones que coincidan con la búsqueda.</p>
       </section>
 
@@ -165,12 +149,7 @@
           <label class="visually-hidden" for="client-search">Buscar cliente</label>
           <input type="search" id="client-search" placeholder="Buscar por nombre, correo o teléfono...">
         </div>
-        <div class="table-wrap">
-          <table id="clients-table">
-            <thead><tr><th>Nombre</th><th>Correo</th><th>Teléfono</th><th>EIN/Tax ID</th><th>Saldo pendiente</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <div class="list-card" id="clients-list"></div>
         <p class="empty-state" id="clients-empty" hidden>No hay clientes que coincidan con la búsqueda.</p>
       </section>
 
@@ -185,12 +164,7 @@
           <label class="visually-hidden" for="product-search">Buscar producto</label>
           <input type="search" id="product-search" placeholder="Buscar por nombre...">
         </div>
-        <div class="table-wrap">
-          <table id="catalog-table">
-            <thead><tr><th>Nombre</th><th>Descripción</th><th>Unidad</th><th>Precio</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <div class="list-card" id="catalog-list"></div>
         <p class="empty-state" id="catalog-empty" hidden>Aún no agregas productos o servicios.</p>
       </section>
 
@@ -206,12 +180,7 @@
           <label class="visually-hidden" for="payment-to">Hasta</label>
           <input type="date" id="payment-to" aria-label="Hasta">
         </div>
-        <div class="table-wrap">
-          <table id="payments-table">
-            <thead><tr><th>Fecha</th><th>Folio</th><th>Cliente</th><th>Método</th><th>Monto</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <div class="list-card" id="payments-view-list"></div>
         <p class="empty-state" id="payments-empty" hidden>Aún no se han registrado pagos.</p>
       </section>
 

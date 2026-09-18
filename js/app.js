@@ -6,6 +6,18 @@
   var MONTHS_SHORT_LABEL = ['E', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
   var PAYMENT_METHODS = ['Efectivo', 'Transferencia', 'Cheque', 'Tarjeta', 'Otro'];
 
+  var TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7"/><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/><path d="M10 11v6M14 11v6"/></svg>';
+  var CHEVRON_RIGHT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+  var CHEVRON_LEFT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
+
+  function navBarHTML(titleHTML, formId, actionLabel) {
+    var left = '<button type="button" class="navbar-back" data-close aria-label="Cerrar">' + CHEVRON_LEFT_SVG + '</button>';
+    var right = formId
+      ? '<button type="submit" form="' + formId + '" class="navbar-action">' + (actionLabel || 'Guardar') + '</button>'
+      : '<span class="navbar-spacer"></span>';
+    return '<div class="modal-header">' + left + '<h2 class="navbar-title">' + titleHTML + '</h2>' + right + '</div>';
+  }
+
   var state = loadState();
   var invoiceFilters = { search: '', status: 'all', from: '', to: '' };
   var quoteFilters = { search: '', status: 'all' };
@@ -279,22 +291,30 @@
     }).join('');
   }
 
+  function invoiceRowHTML(inv, withDelete) {
+    var c = getClient(inv.clientId);
+    var status = invoiceStatus(inv);
+    return '<div class="list-row" data-open-invoice="' + inv.id + '">' +
+      '<div class="list-row-lead">' +
+      '<div class="list-row-title">' + escapeHTML(inv.number) + '</div>' +
+      '<div class="list-row-sub">' + escapeHTML(c ? c.name : '—') + ' · Vence ' + fmtDate(inv.dueDate) + '</div>' +
+      '</div>' +
+      '<div class="list-row-trail">' +
+      '<div class="list-row-amount">' + money(invoiceTotal(inv)) + '</div>' +
+      statusBadge(status) +
+      '</div>' +
+      (withDelete
+        ? '<button type="button" class="list-row-delete" data-delete-invoice="' + inv.id + '" aria-label="Eliminar factura">' + TRASH_SVG + '</button>'
+        : '<span class="list-row-chevron">' + CHEVRON_RIGHT_SVG + '</span>') +
+      '</div>';
+  }
+
   function renderDashInvoicesTable() {
     var rows = state.invoices.slice().sort(function (a, b) { return (b.issueDate || '').localeCompare(a.issueDate || ''); }).slice(0, 5);
-    var tbody = document.querySelector('#dash-invoices-table tbody');
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Aún no hay facturas.</td></tr>'; return; }
-    tbody.innerHTML = rows.map(function (inv) {
-      var c = getClient(inv.clientId);
-      var status = invoiceStatus(inv);
-      return '<tr data-open-invoice="' + inv.id + '">' +
-        '<td class="mono">' + escapeHTML(inv.number) + '</td>' +
-        '<td>' + escapeHTML(c ? c.name : '—') + '</td>' +
-        '<td>' + fmtDate(inv.dueDate) + '</td>' +
-        '<td class="num">' + money(invoiceTotal(inv)) + '</td>' +
-        '<td class="num">' + money(invoiceBalance(inv)) + '</td>' +
-        '<td>' + statusBadge(status) + '</td>' +
-        '</tr>';
-    }).join('');
+    var el = document.getElementById('dash-invoices-list');
+    el.innerHTML = rows.length
+      ? rows.map(function (inv) { return invoiceRowHTML(inv, false); }).join('')
+      : '<p class="list-row-empty">Aún no hay facturas.</p>';
   }
 
   // ---------- invoices view ----------
@@ -316,22 +336,8 @@
 
   function renderInvoices() {
     var rows = filteredInvoices();
-    var tbody = document.querySelector('#invoices-table tbody');
     document.getElementById('invoices-empty').hidden = rows.length > 0;
-    tbody.innerHTML = rows.map(function (inv) {
-      var c = getClient(inv.clientId);
-      var status = invoiceStatus(inv);
-      return '<tr data-open-invoice="' + inv.id + '">' +
-        '<td class="mono">' + escapeHTML(inv.number) + '</td>' +
-        '<td>' + escapeHTML(c ? c.name : '—') + '</td>' +
-        '<td>' + fmtDate(inv.issueDate) + '</td>' +
-        '<td>' + fmtDate(inv.dueDate) + '</td>' +
-        '<td class="num">' + money(invoiceTotal(inv)) + '</td>' +
-        '<td class="num">' + money(invoiceBalance(inv)) + '</td>' +
-        '<td>' + statusBadge(status) + '</td>' +
-        '<td><button type="button" class="btn-icon" data-delete-invoice="' + inv.id + '" aria-label="Eliminar factura">🗑</button></td>' +
-        '</tr>';
-    }).join('');
+    document.getElementById('invoices-list').innerHTML = rows.map(function (inv) { return invoiceRowHTML(inv, true); }).join('');
   }
 
   function invoiceExportRows(format) {
@@ -417,17 +423,19 @@
   function renderQuotes() {
     var rows = filteredQuotes();
     document.getElementById('quotes-empty').hidden = rows.length > 0;
-    document.querySelector('#quotes-table tbody').innerHTML = rows.map(function (q) {
+    document.getElementById('quotes-list').innerHTML = rows.map(function (q) {
       var c = getClient(q.clientId);
-      return '<tr data-open-quote="' + q.id + '">' +
-        '<td class="mono">' + escapeHTML(q.number) + '</td>' +
-        '<td>' + escapeHTML(c ? c.name : '—') + '</td>' +
-        '<td>' + fmtDate(q.issueDate) + '</td>' +
-        '<td>' + fmtDate(q.expiryDate) + '</td>' +
-        '<td class="num">' + money(quoteTotal(q)) + '</td>' +
-        '<td>' + quoteStatusBadge(q.status) + '</td>' +
-        '<td><button type="button" class="btn-icon" data-delete-quote="' + q.id + '" aria-label="Eliminar cotización">🗑</button></td>' +
-        '</tr>';
+      return '<div class="list-row" data-open-quote="' + q.id + '">' +
+        '<div class="list-row-lead">' +
+        '<div class="list-row-title">' + escapeHTML(q.number) + '</div>' +
+        '<div class="list-row-sub">' + escapeHTML(c ? c.name : '—') + ' · Vence ' + fmtDate(q.expiryDate) + '</div>' +
+        '</div>' +
+        '<div class="list-row-trail">' +
+        '<div class="list-row-amount">' + money(quoteTotal(q)) + '</div>' +
+        quoteStatusBadge(q.status) +
+        '</div>' +
+        '<button type="button" class="list-row-delete" data-delete-quote="' + q.id + '" aria-label="Eliminar cotización">' + TRASH_SVG + '</button>' +
+        '</div>';
     }).join('');
   }
 
@@ -444,15 +452,18 @@
   function renderClients() {
     var rows = filteredClients();
     document.getElementById('clients-empty').hidden = rows.length > 0;
-    document.querySelector('#clients-table tbody').innerHTML = rows.map(function (c) {
-      return '<tr data-open-client="' + c.id + '">' +
-        '<td>' + escapeHTML(c.name) + '</td>' +
-        '<td>' + escapeHTML(c.email) + '</td>' +
-        '<td>' + escapeHTML(c.phone) + '</td>' +
-        '<td class="mono">' + escapeHTML(c.taxId) + '</td>' +
-        '<td class="num">' + money(clientBalance(c.id)) + '</td>' +
-        '<td><button type="button" class="btn-icon" data-delete-client="' + c.id + '" aria-label="Eliminar cliente">🗑</button></td>' +
-        '</tr>';
+    document.getElementById('clients-list').innerHTML = rows.map(function (c) {
+      var balance = clientBalance(c.id);
+      return '<div class="list-row" data-open-client="' + c.id + '">' +
+        '<div class="list-row-lead">' +
+        '<div class="list-row-title">' + escapeHTML(c.name) + '</div>' +
+        '<div class="list-row-sub">' + escapeHTML(c.email || c.phone || 'Sin contacto') + '</div>' +
+        '</div>' +
+        '<div class="list-row-trail">' +
+        '<div class="list-row-amount' + (balance > 0 ? '' : ' accent-good') + '">' + money(balance) + '</div>' +
+        '</div>' +
+        '<button type="button" class="list-row-delete" data-delete-client="' + c.id + '" aria-label="Eliminar cliente">' + TRASH_SVG + '</button>' +
+        '</div>';
     }).join('');
   }
 
@@ -468,14 +479,15 @@
   function renderCatalog() {
     var rows = filteredProducts();
     document.getElementById('catalog-empty').hidden = rows.length > 0;
-    document.querySelector('#catalog-table tbody').innerHTML = rows.map(function (p) {
-      return '<tr data-open-product="' + p.id + '">' +
-        '<td>' + escapeHTML(p.name) + '</td>' +
-        '<td>' + escapeHTML(p.description) + '</td>' +
-        '<td>' + escapeHTML(p.unit) + '</td>' +
-        '<td class="num">' + money(p.price) + '</td>' +
-        '<td><button type="button" class="btn-icon" data-delete-product="' + p.id + '" aria-label="Eliminar producto">🗑</button></td>' +
-        '</tr>';
+    document.getElementById('catalog-list').innerHTML = rows.map(function (p) {
+      return '<div class="list-row" data-open-product="' + p.id + '">' +
+        '<div class="list-row-lead">' +
+        '<div class="list-row-title">' + escapeHTML(p.name) + '</div>' +
+        '<div class="list-row-sub">' + escapeHTML(p.description || (p.unit ? 'por ' + p.unit : '')) + '</div>' +
+        '</div>' +
+        '<div class="list-row-trail"><div class="list-row-amount">' + money(p.price) + '</div></div>' +
+        '<button type="button" class="list-row-delete" data-delete-product="' + p.id + '" aria-label="Eliminar producto">' + TRASH_SVG + '</button>' +
+        '</div>';
     }).join('');
   }
 
@@ -501,14 +513,15 @@
       return true;
     });
     document.getElementById('payments-empty').hidden = rows.length > 0;
-    document.querySelector('#payments-table tbody').innerHTML = rows.map(function (p) {
-      return '<tr>' +
-        '<td>' + fmtDate(p.date) + '</td>' +
-        '<td class="mono">' + escapeHTML(p.invoiceNumber) + '</td>' +
-        '<td>' + escapeHTML(p.clientName) + '</td>' +
-        '<td>' + escapeHTML(p.method) + '</td>' +
-        '<td class="num">' + money(p.amount) + '</td>' +
-        '</tr>';
+    document.getElementById('payments-view-list').innerHTML = rows.map(function (p) {
+      return '<div class="list-row not-navigable">' +
+        '<div class="list-row-lead">' +
+        '<div class="list-row-title">' + escapeHTML(p.clientName) + '</div>' +
+        '<div class="list-row-sub">' + escapeHTML(p.invoiceNumber) + ' · ' + escapeHTML(p.method) + '</div>' +
+        '</div>' +
+        '<div class="list-row-trail"><div class="list-row-amount">' + money(p.amount) + '</div>' +
+        '<div class="list-row-sub">' + fmtDate(p.date) + '</div></div>' +
+        '</div>';
     }).join('');
   }
 
@@ -657,9 +670,8 @@
 
   function openMoreSheet() {
     openModal(
-      '<div class="modal-header"><h2>Más</h2>' +
-      '<button type="button" class="modal-close" data-close aria-label="Cerrar">‹</button></div>' +
-      '<div class="more-sheet-list">' +
+      navBarHTML('Más', null) +
+      '<div class="action-list">' +
       '<a href="#catalog" data-close>Catálogo</a>' +
       '<a href="#payments" data-close>Pagos</a>' +
       '<a href="#settings" data-close>Ajustes</a>' +
@@ -672,18 +684,14 @@
   function openClientModal(client) {
     var isEdit = !!client;
     client = client || { name: '', email: '', phone: '', taxId: '', address: '' };
-    var html = '<div class="modal-header"><h2>' + (isEdit ? 'Editar cliente' : 'Nuevo cliente') + '</h2>' +
-      '<button type="button" class="modal-close" data-close aria-label="Cerrar">‹</button></div>' +
+    var html = navBarHTML(isEdit ? 'Editar cliente' : 'Nuevo cliente', 'client-form') +
       '<form id="client-form" class="form-grid" style="max-width:none;">' +
       '<label>Nombre<input type="text" name="name" required value="' + escapeHTML(client.name) + '"></label>' +
       '<label>Correo<input type="email" name="email" value="' + escapeHTML(client.email) + '"></label>' +
       '<label>Teléfono<input type="text" name="phone" value="' + escapeHTML(client.phone) + '"></label>' +
       '<label>EIN / Tax ID<input type="text" name="taxId" value="' + escapeHTML(client.taxId) + '"></label>' +
       '<label>Dirección<input type="text" name="address" value="' + escapeHTML(client.address) + '"></label>' +
-      '<div class="modal-actions">' +
-      '<button type="button" class="btn btn-ghost" data-close>Cancelar</button>' +
-      '<button type="submit" class="btn btn-primary">Guardar</button>' +
-      '</div></form>';
+      '</form>';
 
     if (isEdit) {
       var invs = clientInvoices(client.id);
@@ -691,12 +699,12 @@
       html += '<div class="modal-section"><h3>Facturas de este cliente</h3><div class="history-list">' +
         (invs.length ? invs.map(function (i) {
           return '<div class="history-row" data-open-invoice="' + i.id + '"><span>' + escapeHTML(i.number) + ' · ' + fmtDate(i.issueDate) + '</span>' +
-            '<span>' + money(invoiceTotal(i)) + ' ' + statusBadge(invoiceStatus(i)) + '</span></div>';
+            '<span style="display:flex;align-items:center;gap:6px;">' + money(invoiceTotal(i)) + ' ' + statusBadge(invoiceStatus(i)) + '<span class="list-row-chevron">' + CHEVRON_RIGHT_SVG + '</span></span></div>';
         }).join('') : '<p class="field-hint">Sin facturas todavía.</p>') + '</div></div>';
       html += '<div class="modal-section"><h3>Cotizaciones de este cliente</h3><div class="history-list">' +
         (qts.length ? qts.map(function (q) {
           return '<div class="history-row" data-open-quote="' + q.id + '"><span>' + escapeHTML(q.number) + ' · ' + fmtDate(q.issueDate) + '</span>' +
-            '<span>' + money(quoteTotal(q)) + ' ' + quoteStatusBadge(q.status) + '</span></div>';
+            '<span style="display:flex;align-items:center;gap:6px;">' + money(quoteTotal(q)) + ' ' + quoteStatusBadge(q.status) + '<span class="list-row-chevron">' + CHEVRON_RIGHT_SVG + '</span></span></div>';
         }).join('') : '<p class="field-hint">Sin cotizaciones todavía.</p>') + '</div></div>';
     }
 
@@ -730,17 +738,13 @@
     var isEdit = !!product;
     product = product || { name: '', description: '', unit: '', price: '' };
     openModal(
-      '<div class="modal-header"><h2>' + (isEdit ? 'Editar producto' : 'Nuevo producto o servicio') + '</h2>' +
-      '<button type="button" class="modal-close" data-close aria-label="Cerrar">‹</button></div>' +
+      navBarHTML(isEdit ? 'Editar producto' : 'Nuevo producto o servicio', 'product-form') +
       '<form id="product-form" class="form-grid" style="max-width:none;">' +
       '<label>Nombre<input type="text" name="name" required value="' + escapeHTML(product.name) + '"></label>' +
       '<label>Descripción<input type="text" name="description" value="' + escapeHTML(product.description) + '"></label>' +
       '<label>Unidad (hrs, pieza, pie², gal...)<input type="text" name="unit" value="' + escapeHTML(product.unit) + '"></label>' +
       '<label>Precio<input type="number" name="price" min="0" step="0.01" required value="' + escapeHTML(product.price) + '"></label>' +
-      '<div class="modal-actions">' +
-      '<button type="button" class="btn btn-ghost" data-close>Cancelar</button>' +
-      '<button type="submit" class="btn btn-primary">Guardar</button>' +
-      '</div></form>'
+      '</form>'
     );
     document.getElementById('product-form').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -787,8 +791,8 @@
       '<input type="number" class="' + cls + '-price" min="0" step="0.01" placeholder="Precio" value="' + item.price + '">' +
       '</div>' +
       '<div class="ie-actions">' +
-      '<button type="button" class="btn btn-ghost btn-small" id="' + cls + '-editor-cancel">Cancelar</button>' +
-      '<button type="button" class="btn-pill btn-pill-ghost" id="' + cls + '-editor-save" style="width:auto;padding:8px 18px;min-height:36px;">Guardar concepto</button>' +
+      '<button type="button" class="btn-small" id="' + cls + '-editor-cancel">Cancelar</button>' +
+      '<button type="button" class="ie-save-btn" id="' + cls + '-editor-save">Guardar concepto</button>' +
       '</div></div>';
   }
 
@@ -797,7 +801,7 @@
       '<div class="item-row-main"><div class="item-row-desc">' + escapeHTML(item.description) + '</div>' +
       '<div class="item-row-sub">' + item.qty + (item.unit ? ' ' + escapeHTML(item.unit) : '') + ' × ' + money(item.price) + '</div></div>' +
       '<div class="item-row-amount">' + money((Number(item.qty) || 0) * (Number(item.price) || 0)) + '</div>' +
-      '<button type="button" class="item-row-delete" data-remove-item="' + idx + '" aria-label="Eliminar concepto">🗑</button>' +
+      '<button type="button" class="item-row-delete" data-remove-item="' + idx + '" aria-label="Eliminar concepto">' + TRASH_SVG + '</button>' +
       '</div>';
   }
 
@@ -814,8 +818,7 @@
     var taxRate = isEdit ? invoice.taxRate : state.settings.taxRate;
     var clientId = isEdit ? invoice.clientId : state.clients[0].id;
 
-    var html = '<div class="modal-header"><h2>' + (isEdit ? 'Factura ' + escapeHTML(invoice.number) : 'Nueva factura') + '</h2>' +
-      '<button type="button" class="modal-close" data-close aria-label="Cerrar">‹</button></div>' +
+    var html = navBarHTML(isEdit ? escapeHTML(invoice.number) : 'Nueva factura', 'invoice-form') +
       '<form id="invoice-form">' +
       '<div class="form-grid" style="max-width:none;">' +
       '<label>Cliente<select name="clientId" class="select-pill">' + state.clients.map(function (c) {
@@ -837,23 +840,24 @@
       html += '<div class="modal-section"><h3>Pagos</h3>' +
         '<div class="payments-list" id="payments-list"></div>' +
         '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">' +
-        '<label style="font-size:12px;font-weight:600;">Fecha<input type="date" id="payment-date" value="' + todayISO() + '" style="display:block;padding:8px;border:1px solid var(--line);border-radius:6px;"></label>' +
-        '<label style="font-size:12px;font-weight:600;">Monto<input type="number" id="payment-amount" min="0" step="0.01" style="display:block;padding:8px;border:1px solid var(--line);border-radius:6px;width:110px;"></label>' +
-        '<label style="font-size:12px;font-weight:600;">Método<select id="payment-method" style="display:block;padding:8px;border:1px solid var(--line);border-radius:6px;">' +
+        '<label style="font-size:12px;font-weight:600;color:var(--ink-soft);">Fecha<input type="date" id="payment-date" value="' + todayISO() + '" style="display:block;padding:9px 10px;border:none;border-radius:9px;background:var(--fill);"></label>' +
+        '<label style="font-size:12px;font-weight:600;color:var(--ink-soft);">Monto<input type="number" id="payment-amount" min="0" step="0.01" style="display:block;padding:9px 10px;border:none;border-radius:9px;background:var(--fill);width:110px;"></label>' +
+        '<label style="font-size:12px;font-weight:600;color:var(--ink-soft);">Método<select id="payment-method" style="display:block;padding:9px 10px;border:none;border-radius:9px;background:var(--fill);">' +
         PAYMENT_METHODS.map(function (m) { return '<option value="' + m + '">' + m + '</option>'; }).join('') + '</select></label>' +
-        '<button type="button" class="btn btn-ghost btn-small" id="add-payment-btn">+ Registrar pago</button>' +
+        '<button type="button" class="btn-small" id="add-payment-btn" style="color:var(--accent);font-weight:600;background:none;border:none;cursor:pointer;">+ Registrar pago</button>' +
         '</div>' +
         '<div class="balance-line" id="balance-line"></div>' +
         '</div>';
     }
 
-    html += '<div class="modal-actions">';
-    if (isEdit) html += '<button type="button" class="btn btn-ghost" id="download-pdf-btn">Descargar PDF</button>' +
-      '<button type="button" class="btn btn-ghost" id="send-email-btn">Enviar por correo</button>' +
-      '<button type="button" class="btn btn-danger" id="delete-invoice-btn">Eliminar</button>';
-    html += '<button type="button" class="btn btn-ghost" data-close>Cancelar</button>' +
-      '<button type="submit" class="btn btn-primary">Guardar</button>' +
-      '</div></form>';
+    if (isEdit) {
+      html += '<div class="action-list">' +
+        '<button type="button" id="download-pdf-btn">Descargar PDF</button>' +
+        '<button type="button" id="send-email-btn">Enviar por correo</button>' +
+        '<button type="button" class="action-destructive" id="delete-invoice-btn">Eliminar factura</button>' +
+        '</div>';
+    }
+    html += '</form>';
 
     openModal(html);
 
@@ -890,7 +894,7 @@
       var payments = invoice.payments || [];
       list.innerHTML = payments.length ? payments.map(function (p, idx) {
         return '<div class="payment-row"><span>' + fmtDate(p.date) + ' · ' + escapeHTML(p.method) + '</span>' +
-          '<span>' + money(p.amount) + ' <button type="button" class="btn-icon" data-remove-payment="' + idx + '" aria-label="Quitar pago">🗑</button></span></div>';
+          '<span>' + money(p.amount) + ' <button type="button" class="btn-icon" data-remove-payment="' + idx + '" aria-label="Quitar pago">' + TRASH_SVG + '</button></span></div>';
       }).join('') : '<p class="field-hint">Sin pagos registrados todavía.</p>';
       var subtotal = draftItems.reduce(function (s, it) { return s + (Number(it.qty) || 0) * (Number(it.price) || 0); }, 0);
       var rate = Number(form.taxRate.value) || 0;
@@ -1050,12 +1054,11 @@
     var clientId = isEdit ? quote.clientId : state.clients[0].id;
     var status = isEdit ? quote.status : 'draft';
 
-    var html = '<div class="modal-header"><h2>' + (isEdit ? 'Cotización ' + escapeHTML(quote.number) : 'Nueva cotización') + '</h2>' +
-      '<button type="button" class="modal-close" data-close aria-label="Cerrar">‹</button></div>';
+    var html = navBarHTML(isEdit ? escapeHTML(quote.number) : 'Nueva cotización', 'quote-form');
 
     if (isEdit && quote.status === 'converted' && quote.convertedInvoiceId && getInvoice(quote.convertedInvoiceId)) {
       html += '<div class="convert-banner"><span>Ya se convirtió en la factura ' + escapeHTML(getInvoice(quote.convertedInvoiceId).number) + '.</span>' +
-        '<button type="button" class="btn btn-ghost btn-small" id="open-converted-invoice-btn">Ver factura</button></div>';
+        '<button type="button" class="btn-small" id="open-converted-invoice-btn" style="color:var(--good);font-weight:700;background:none;border:none;cursor:pointer;">Ver factura</button></div>';
     }
 
     html += '<form id="quote-form">' +
@@ -1082,16 +1085,15 @@
       '<div class="totals-block" id="quote-totals-block"></div>' +
       '</div>';
 
-    html += '<div class="modal-actions">';
     if (isEdit) {
-      html += '<button type="button" class="btn btn-ghost" id="download-quote-pdf-btn">Descargar PDF</button>' +
-        '<button type="button" class="btn btn-ghost" id="send-quote-email-btn">Enviar por correo</button>';
-      if (quote.status !== 'converted') html += '<button type="button" class="btn btn-ghost" id="convert-quote-btn">Convertir a factura</button>';
-      html += '<button type="button" class="btn btn-danger" id="delete-quote-btn">Eliminar</button>';
+      html += '<div class="action-list">' +
+        '<button type="button" id="download-quote-pdf-btn">Descargar PDF</button>' +
+        '<button type="button" id="send-quote-email-btn">Enviar por correo</button>';
+      if (quote.status !== 'converted') html += '<button type="button" id="convert-quote-btn">Convertir a factura</button>';
+      html += '<button type="button" class="action-destructive" id="delete-quote-btn">Eliminar cotización</button>' +
+        '</div>';
     }
-    html += '<button type="button" class="btn btn-ghost" data-close>Cancelar</button>' +
-      '<button type="submit" class="btn btn-primary">Guardar</button>' +
-      '</div></form>';
+    html += '</form>';
 
     openModal(html);
     var form = document.getElementById('quote-form');
@@ -1441,13 +1443,13 @@
 
   function openOnboarding() {
     openModal(
-      '<div class="modal-header"><h2>Bienvenido</h2></div>' +
-      '<p class="field-hint">Antes de empezar, cuéntanos sobre tu compañía. Puedes cambiar esto luego en Ajustes.</p>' +
-      '<form id="onboarding-form" class="form-grid" style="max-width:none;">' +
+      '<div class="modal-header simple"><h2>Bienvenido</h2></div>' +
+      '<p class="field-hint" style="text-align:center;">Antes de empezar, cuéntanos sobre tu compañía. Puedes cambiar esto luego en Ajustes.</p>' +
+      '<form id="onboarding-form" class="form-grid" style="max-width:none;margin-top:8px;">' +
       '<label>Nombre de la compañía<input type="text" name="companyName" required></label>' +
       '<label>EIN / Tax ID (opcional)<input type="text" name="ein" placeholder="12-3456789"></label>' +
       '<label>Tasa de sales tax por defecto (%)<input type="number" name="taxRate" min="0" max="100" step="0.001" value="0" required></label>' +
-      '<div class="modal-actions"><button type="submit" class="btn btn-primary">Empezar</button></div>' +
+      '<button type="submit" class="btn-pill" style="margin-top:8px;">Empezar</button>' +
       '</form>'
     );
     document.querySelector('.modal-overlay').style.pointerEvents = 'auto';
