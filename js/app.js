@@ -1307,7 +1307,7 @@
       head: [['Description', 'Qty', 'Unit', 'Rate', 'Amount']],
       body: body,
       styles: { font: 'helvetica', fontSize: 10 },
-      headStyles: { fillColor: [28, 27, 24] }
+      headStyles: { fillColor: [20, 51, 94] }
     });
 
     var afterTableY = doc.lastAutoTable.finalY + 20;
@@ -1375,7 +1375,7 @@
       head: [['Description', 'Qty', 'Unit', 'Rate', 'Amount']],
       body: body,
       styles: { font: 'helvetica', fontSize: 10 },
-      headStyles: { fillColor: [28, 27, 24] }
+      headStyles: { fillColor: [20, 51, 94] }
     });
 
     var afterTableY = doc.lastAutoTable.finalY + 20;
@@ -1396,7 +1396,7 @@
 
     if (s.paymentLink) {
       var payY = afterTableY + rows.length * 16 + 22;
-      doc.setFont('helvetica', 'bold'); doc.setTextColor(181, 80, 46);
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(20, 51, 94);
       doc.textWithLink('Pay online →', marginX, payY, { url: s.paymentLink });
       doc.setTextColor(0, 0, 0);
     }
