@@ -29,10 +29,11 @@
 
   function defaultState() {
     return {
+      onboarded: false,
       settings: {
-        companyName: '',
+        companyName: 'C&M Truck & Auto Wash',
         ein: '',
-        logo: null,
+        logo: window.DEFAULT_LOGO || null,
         taxRate: 0,
         dueDays: 15,
         invoicePrefix: 'INV-',
@@ -61,6 +62,7 @@
     raw.products = raw.products || [];
     raw.invoices = raw.invoices || [];
     raw.quotes = raw.quotes || [];
+    raw.onboarded = raw.onboarded === true;
     return raw;
   }
 
@@ -1439,16 +1441,18 @@
 
   // ---------- onboarding ----------
 
-  function needsOnboarding() { return !state.settings.companyName; }
+  function needsOnboarding() { return !state.onboarded; }
 
   function openOnboarding() {
+    var s = state.settings;
+    var logoPreview = s.logo ? '<img src="' + s.logo + '" alt="" style="width:64px;height:64px;object-fit:contain;border-radius:14px;margin:0 auto 4px;display:block;">' : '';
     openModal(
-      '<div class="modal-header simple"><h2>Bienvenido</h2></div>' +
-      '<p class="field-hint" style="text-align:center;">Antes de empezar, cuéntanos sobre tu compañía. Puedes cambiar esto luego en Ajustes.</p>' +
+      '<div class="modal-header simple">' + logoPreview + '<h2>Bienvenido</h2></div>' +
+      '<p class="field-hint" style="text-align:center;">Ya dejamos tu compañía y tu logo listos. Confirma o ajusta estos datos para empezar — lo demás lo cambias luego en Ajustes.</p>' +
       '<form id="onboarding-form" class="form-grid" style="max-width:none;margin-top:8px;">' +
-      '<label>Nombre de la compañía<input type="text" name="companyName" required></label>' +
-      '<label>EIN / Tax ID (opcional)<input type="text" name="ein" placeholder="12-3456789"></label>' +
-      '<label>Tasa de sales tax por defecto (%)<input type="number" name="taxRate" min="0" max="100" step="0.001" value="0" required></label>' +
+      '<label>Nombre de la compañía<input type="text" name="companyName" required value="' + escapeHTML(s.companyName) + '"></label>' +
+      '<label>EIN / Tax ID (opcional)<input type="text" name="ein" placeholder="12-3456789" value="' + escapeHTML(s.ein) + '"></label>' +
+      '<label>Tasa de sales tax por defecto (%)<input type="number" name="taxRate" min="0" max="100" step="0.001" value="' + s.taxRate + '" required></label>' +
       '<button type="submit" class="btn-pill" style="margin-top:8px;">Empezar</button>' +
       '</form>'
     );
@@ -1459,6 +1463,7 @@
       state.settings.companyName = fd.get('companyName').trim();
       state.settings.ein = fd.get('ein').trim();
       state.settings.taxRate = Number(fd.get('taxRate')) || 0;
+      state.onboarded = true;
       saveState();
       closeModal();
       applyBrand();
