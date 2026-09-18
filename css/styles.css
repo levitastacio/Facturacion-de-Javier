@@ -315,6 +315,7 @@ td.mono, th.mono { font-family: var(--mono); }
 .line-items-table td { padding: 4px 6px; }
 .line-items-table input, .line-items-table select { width: 100%; padding: 8px; font-size: 13px; border: 1px solid var(--line); border-radius: 6px; font-family: inherit; }
 .line-items-table input.qty, .line-items-table input.price { width: 90px; }
+.line-items-table input.unit { width: 80px; }
 .line-item-remove { border: none; background: none; color: var(--bad); cursor: pointer; font-size: 16px; }
 
 .totals-block { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-top: 8px; font-size: 13.5px; }
@@ -326,6 +327,32 @@ td.mono, th.mono { font-family: var(--mono); }
 .balance-line { display: flex; justify-content: space-between; font-size: 15px; font-weight: 700; padding: 10px 0; }
 .balance-line.settled { color: var(--good); }
 .balance-line.owed { color: var(--bad); }
+
+.history-list { display: flex; flex-direction: column; gap: 6px; }
+.history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  padding: 8px 10px;
+  background: var(--paper);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.history-row:hover { background: var(--line); }
+.convert-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--good-bg);
+  color: var(--good);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
 
 #toast-root {
   position: fixed;

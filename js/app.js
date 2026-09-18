@@ -8,6 +8,7 @@
 
   var state = loadState();
   var invoiceFilters = { search: '', status: 'all', from: '', to: '' };
+  var quoteFilters = { search: '', status: 'all' };
   var clientFilter = '';
   var productFilter = '';
   var paymentFilters = { search: '', from: '', to: '' };
@@ -24,12 +25,16 @@
         dueDays: 15,
         invoicePrefix: 'INV-',
         nextInvoiceNumber: 1,
+        quotePrefix: 'EST-',
+        nextQuoteNumber: 1,
+        paymentLink: '',
         backupReminderDays: 14,
         lastBackupAt: null
       },
       clients: [],
       products: [],
       invoices: [],
+      quotes: [],
       bannerDismissedAt: null
     };
   }
@@ -43,6 +48,7 @@
     raw.clients = raw.clients || [];
     raw.products = raw.products || [];
     raw.invoices = raw.invoices || [];
+    raw.quotes = raw.quotes || [];
     return raw;
   }
 
@@ -90,6 +96,7 @@
   function getClient(id) { return state.clients.find(function (c) { return c.id === id; }); }
   function getProduct(id) { return state.products.find(function (p) { return p.id === id; }); }
   function getInvoice(id) { return state.invoices.find(function (i) { return i.id === id; }); }
+  function getQuote(id) { return state.quotes.find(function (q) { return q.id === id; }); }
 
   function invoiceSubtotal(inv) {
     return inv.items.reduce(function (sum, it) { return sum + (Number(it.qty) || 0) * (Number(it.price) || 0); }, 0);
@@ -129,9 +136,50 @@
     return state.settings.invoicePrefix + String(state.settings.nextInvoiceNumber).padStart(4, '0');
   }
 
+  function nextQuotePreview() {
+    return state.settings.quotePrefix + String(state.settings.nextQuoteNumber).padStart(4, '0');
+  }
+
+  function quoteSubtotal(q) {
+    return q.items.reduce(function (sum, it) { return sum + (Number(it.qty) || 0) * (Number(it.price) || 0); }, 0);
+  }
+  function quoteTaxAmount(q) {
+    return quoteSubtotal(q) * (Number(q.taxRate) || 0) / 100;
+  }
+  function quoteTotal(q) {
+    return quoteSubtotal(q) + quoteTaxAmount(q);
+  }
+  function quoteStatusLabel(s) {
+    return { draft: 'Borrador', sent: 'Enviada', approved: 'Aprobada', declined: 'Rechazada', converted: 'Convertida' }[s] || s;
+  }
+  function quoteStatusBadgeClass(s) {
+    return { draft: 'pending', sent: 'pending', approved: 'paid', declined: 'overdue', converted: 'paid' }[s] || 'pending';
+  }
+  function quoteStatusBadge(s) {
+    return '<span class="badge badge-' + quoteStatusBadgeClass(s) + '">' + quoteStatusLabel(s) + '</span>';
+  }
+
+  function clientInvoices(clientId) {
+    return state.invoices.filter(function (i) { return i.clientId === clientId; })
+      .sort(function (a, b) { return (b.issueDate || '').localeCompare(a.issueDate || ''); });
+  }
+  function clientQuotes(clientId) {
+    return state.quotes.filter(function (q) { return q.clientId === clientId; })
+      .sort(function (a, b) { return (b.issueDate || '').localeCompare(a.issueDate || ''); });
+  }
+
+  function openMailto(to, subject, body) {
+    var url = 'mailto:' + encodeURIComponent(to || '') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    var a = document.createElement('a');
+    a.href = url;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
   // ---------- routing ----------
 
-  var VIEWS = ['dashboard', 'invoices', 'clients', 'catalog', 'payments', 'settings'];
+  var VIEWS = ['dashboard', 'invoices', 'quotes', 'clients', 'catalog', 'payments', 'settings'];
 
   function currentViewFromHash() {
     var h = (location.hash || '').replace('#', '');
@@ -151,6 +199,7 @@
   function renderView(name) {
     if (name === 'dashboard') renderDashboard();
     else if (name === 'invoices') renderInvoices();
+    else if (name === 'quotes') renderQuotes();
     else if (name === 'clients') renderClients();
     else if (name === 'catalog') renderCatalog();
     else if (name === 'payments') renderPayments();
@@ -295,6 +344,7 @@
             Item: it.description,
             ItemDescription: it.description,
             ItemQuantity: it.qty,
+            ItemUnit: it.unit || '',
             ItemRate: it.price,
             ItemAmount: Math.round(it.qty * it.price * 100) / 100,
             Currency: 'USD'
@@ -344,6 +394,38 @@
     URL.revokeObjectURL(url);
   }
 
+  // ---------- quotes view ----------
+
+  function filteredQuotes() {
+    var q = quoteFilters.search.trim().toLowerCase();
+    return state.quotes.filter(function (quote) {
+      var c = getClient(quote.clientId);
+      if (q) {
+        var hay = (quote.number + ' ' + (c ? c.name : '')).toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      if (quoteFilters.status !== 'all' && quote.status !== quoteFilters.status) return false;
+      return true;
+    }).sort(function (a, b) { return (b.issueDate || '').localeCompare(a.issueDate || '') || b.number.localeCompare(a.number); });
+  }
+
+  function renderQuotes() {
+    var rows = filteredQuotes();
+    document.getElementById('quotes-empty').hidden = rows.length > 0;
+    document.querySelector('#quotes-table tbody').innerHTML = rows.map(function (q) {
+      var c = getClient(q.clientId);
+      return '<tr data-open-quote="' + q.id + '">' +
+        '<td class="mono">' + escapeHTML(q.number) + '</td>' +
+        '<td>' + escapeHTML(c ? c.name : '—') + '</td>' +
+        '<td>' + fmtDate(q.issueDate) + '</td>' +
+        '<td>' + fmtDate(q.expiryDate) + '</td>' +
+        '<td class="num">' + money(quoteTotal(q)) + '</td>' +
+        '<td>' + quoteStatusBadge(q.status) + '</td>' +
+        '<td><button type="button" class="btn-icon" data-delete-quote="' + q.id + '" aria-label="Eliminar cotización">🗑</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+
   // ---------- clients view ----------
 
   function filteredClients() {
@@ -385,6 +467,7 @@
       return '<tr data-open-product="' + p.id + '">' +
         '<td>' + escapeHTML(p.name) + '</td>' +
         '<td>' + escapeHTML(p.description) + '</td>' +
+        '<td>' + escapeHTML(p.unit) + '</td>' +
         '<td class="num">' + money(p.price) + '</td>' +
         '<td><button type="button" class="btn-icon" data-delete-product="' + p.id + '" aria-label="Eliminar producto">🗑</button></td>' +
         '</tr>';
@@ -445,6 +528,13 @@
     invForm.invoicePrefix.value = s.invoicePrefix;
     invForm.nextInvoiceNumber.value = s.nextInvoiceNumber;
     document.getElementById('folio-preview').textContent = nextFolioPreview();
+
+    document.getElementById('settings-payment-form').paymentLink.value = s.paymentLink || '';
+
+    var quotesForm = document.getElementById('settings-quotes-form');
+    quotesForm.quotePrefix.value = s.quotePrefix;
+    quotesForm.nextQuoteNumber.value = s.nextQuoteNumber;
+    document.getElementById('quote-number-preview').textContent = nextQuotePreview();
 
     document.getElementById('settings-backup-form').backupReminderDays.value = s.backupReminderDays;
     document.getElementById('last-backup-line').textContent = s.lastBackupAt
@@ -565,8 +655,7 @@
   function openClientModal(client) {
     var isEdit = !!client;
     client = client || { name: '', email: '', phone: '', taxId: '', address: '' };
-    openModal(
-      '<div class="modal-header"><h2>' + (isEdit ? 'Editar cliente' : 'Nuevo cliente') + '</h2>' +
+    var html = '<div class="modal-header"><h2>' + (isEdit ? 'Editar cliente' : 'Nuevo cliente') + '</h2>' +
       '<button type="button" class="modal-close" data-close aria-label="Cerrar">×</button></div>' +
       '<form id="client-form" class="form-grid" style="max-width:none;">' +
       '<label>Nombre<input type="text" name="name" required value="' + escapeHTML(client.name) + '"></label>' +
@@ -577,8 +666,24 @@
       '<div class="modal-actions">' +
       '<button type="button" class="btn btn-ghost" data-close>Cancelar</button>' +
       '<button type="submit" class="btn btn-primary">Guardar</button>' +
-      '</div></form>'
-    );
+      '</div></form>';
+
+    if (isEdit) {
+      var invs = clientInvoices(client.id);
+      var qts = clientQuotes(client.id);
+      html += '<div class="modal-section"><h3>Facturas de este cliente</h3><div class="history-list">' +
+        (invs.length ? invs.map(function (i) {
+          return '<div class="history-row" data-open-invoice="' + i.id + '"><span>' + escapeHTML(i.number) + ' · ' + fmtDate(i.issueDate) + '</span>' +
+            '<span>' + money(invoiceTotal(i)) + ' ' + statusBadge(invoiceStatus(i)) + '</span></div>';
+        }).join('') : '<p class="field-hint">Sin facturas todavía.</p>') + '</div></div>';
+      html += '<div class="modal-section"><h3>Cotizaciones de este cliente</h3><div class="history-list">' +
+        (qts.length ? qts.map(function (q) {
+          return '<div class="history-row" data-open-quote="' + q.id + '"><span>' + escapeHTML(q.number) + ' · ' + fmtDate(q.issueDate) + '</span>' +
+            '<span>' + money(quoteTotal(q)) + ' ' + quoteStatusBadge(q.status) + '</span></div>';
+        }).join('') : '<p class="field-hint">Sin cotizaciones todavía.</p>') + '</div></div>';
+    }
+
+    openModal(html);
     document.getElementById('client-form').addEventListener('submit', function (e) {
       e.preventDefault();
       var fd = new FormData(this);
@@ -606,13 +711,14 @@
 
   function openProductModal(product) {
     var isEdit = !!product;
-    product = product || { name: '', description: '', price: '' };
+    product = product || { name: '', description: '', unit: '', price: '' };
     openModal(
       '<div class="modal-header"><h2>' + (isEdit ? 'Editar producto' : 'Nuevo producto o servicio') + '</h2>' +
       '<button type="button" class="modal-close" data-close aria-label="Cerrar">×</button></div>' +
       '<form id="product-form" class="form-grid" style="max-width:none;">' +
       '<label>Nombre<input type="text" name="name" required value="' + escapeHTML(product.name) + '"></label>' +
       '<label>Descripción<input type="text" name="description" value="' + escapeHTML(product.description) + '"></label>' +
+      '<label>Unidad (hrs, pieza, pie², gal...)<input type="text" name="unit" value="' + escapeHTML(product.unit) + '"></label>' +
       '<label>Precio<input type="number" name="price" min="0" step="0.01" required value="' + escapeHTML(product.price) + '"></label>' +
       '<div class="modal-actions">' +
       '<button type="button" class="btn btn-ghost" data-close>Cancelar</button>' +
@@ -622,7 +728,7 @@
     document.getElementById('product-form').addEventListener('submit', function (e) {
       e.preventDefault();
       var fd = new FormData(this);
-      var data = { name: fd.get('name').trim(), description: fd.get('description').trim(), price: Number(fd.get('price')) || 0 };
+      var data = { name: fd.get('name').trim(), description: fd.get('description').trim(), unit: fd.get('unit').trim(), price: Number(fd.get('price')) || 0 };
       if (!data.name) return;
       if (isEdit) { Object.assign(product, data); }
       else { data.id = uid(); state.products.push(data); }
@@ -645,7 +751,7 @@
   var draftItems = [];
 
   function blankItem() {
-    return { catalogId: '', description: '', qty: 1, price: 0 };
+    return { catalogId: '', description: '', qty: 1, unit: '', price: 0 };
   }
 
   function openInvoiceModal(invoice) {
@@ -673,7 +779,7 @@
       '<label style="flex:1;">Sales tax %<input type="number" name="taxRate" min="0" max="100" step="0.001" value="' + taxRate + '"></label>' +
       '</div></div>' +
       '<div class="modal-section"><h3>Conceptos</h3>' +
-      '<table class="line-items-table" id="line-items-table"><thead><tr><th>Producto</th><th>Descripción</th><th>Cant.</th><th>Precio</th><th>Total</th><th></th></tr></thead>' +
+      '<table class="line-items-table" id="line-items-table"><thead><tr><th>Producto</th><th>Descripción</th><th>Cant.</th><th>Unidad</th><th>Precio</th><th>Total</th><th></th></tr></thead>' +
       '<tbody id="line-items-body"></tbody></table>' +
       '<button type="button" class="btn btn-ghost btn-small" id="add-line-btn">+ Agregar línea</button>' +
       '<div class="totals-block" id="totals-block"></div>' +
@@ -695,6 +801,7 @@
 
     html += '<div class="modal-actions">';
     if (isEdit) html += '<button type="button" class="btn btn-ghost" id="download-pdf-btn">Descargar PDF</button>' +
+      '<button type="button" class="btn btn-ghost" id="send-email-btn">Enviar por correo</button>' +
       '<button type="button" class="btn btn-danger" id="delete-invoice-btn">Eliminar</button>';
     html += '<button type="button" class="btn btn-ghost" data-close>Cancelar</button>' +
       '<button type="submit" class="btn btn-primary">Guardar</button>' +
@@ -713,6 +820,7 @@
           '<td><select class="li-catalog">' + options + '</select></td>' +
           '<td><input type="text" class="li-desc" value="' + escapeHTML(item.description) + '"></td>' +
           '<td><input type="number" class="li-qty qty" min="0" step="0.01" value="' + item.qty + '"></td>' +
+          '<td><input type="text" class="li-unit unit" value="' + escapeHTML(item.unit || '') + '" placeholder="hrs"></td>' +
           '<td><input type="number" class="li-price price" min="0" step="0.01" value="' + item.price + '"></td>' +
           '<td class="num">' + money((Number(item.qty) || 0) * (Number(item.price) || 0)) + '</td>' +
           '<td><button type="button" class="line-item-remove" data-remove="' + idx + '" aria-label="Quitar línea">×</button></td>' +
@@ -759,8 +867,11 @@
         var idx = Number(tr.dataset.idx);
         if (e.target.classList.contains('li-desc')) draftItems[idx].description = e.target.value;
         if (e.target.classList.contains('li-qty')) draftItems[idx].qty = e.target.value;
+        if (e.target.classList.contains('li-unit')) draftItems[idx].unit = e.target.value;
         if (e.target.classList.contains('li-price')) draftItems[idx].price = e.target.value;
         tr.querySelector('.num').textContent = money((Number(draftItems[idx].qty) || 0) * (Number(draftItems[idx].price) || 0));
+        renderTotals();
+        renderPaymentsSection();
       }
       if (e.target.name === 'taxRate') { renderTotals(); renderPaymentsSection(); }
     });
@@ -773,7 +884,7 @@
         draftItems[idx].catalogId = pid;
         if (pid) {
           var p = getProduct(pid);
-          if (p) { draftItems[idx].description = p.description || p.name; draftItems[idx].price = p.price; }
+          if (p) { draftItems[idx].description = p.description || p.name; draftItems[idx].price = p.price; draftItems[idx].unit = p.unit || ''; }
         }
         renderLineItems();
       }
@@ -812,6 +923,7 @@
         toast('Pago registrado.');
       });
       document.getElementById('download-pdf-btn').addEventListener('click', function () { downloadInvoicePDF(invoice); });
+      document.getElementById('send-email-btn').addEventListener('click', function () { sendInvoiceEmail(invoice); });
       document.getElementById('delete-invoice-btn').addEventListener('click', function () {
         if (!confirm('¿Eliminar esta factura? Esta acción no se puede deshacer.')) return;
         state.invoices = state.invoices.filter(function (i) { return i.id !== invoice.id; });
@@ -826,7 +938,7 @@
       e.preventDefault();
       var fd = new FormData(form);
       var items = draftItems
-        .map(function (it) { return { catalogId: it.catalogId || '', description: (it.description || '').trim(), qty: Number(it.qty) || 0, price: Number(it.price) || 0 }; })
+        .map(function (it) { return { catalogId: it.catalogId || '', description: (it.description || '').trim(), qty: Number(it.qty) || 0, unit: (it.unit || '').trim(), price: Number(it.price) || 0 }; })
         .filter(function (it) { return it.description && it.qty > 0; });
       if (!items.length) { toast('Agrega al menos un concepto válido.'); return; }
       var payload = {
@@ -850,6 +962,278 @@
       renderView(currentViewFromHash());
       toast('Factura guardada.');
     });
+  }
+
+  // ---------- quote modal ----------
+
+  var quoteDraftItems = [];
+
+  function openQuoteModal(quote) {
+    var isEdit = !!quote;
+    if (!state.clients.length) {
+      toast('Primero agrega al menos un cliente.');
+      return;
+    }
+    quoteDraftItems = isEdit ? quote.items.map(function (it) { return Object.assign({}, it); }) : [blankItem()];
+    var issueDate = isEdit ? quote.issueDate : todayISO();
+    var expiryDate = isEdit ? quote.expiryDate : addDaysISO(issueDate, 30);
+    var taxRate = isEdit ? quote.taxRate : state.settings.taxRate;
+    var clientId = isEdit ? quote.clientId : state.clients[0].id;
+    var status = isEdit ? quote.status : 'draft';
+
+    var html = '<div class="modal-header"><h2>' + (isEdit ? 'Cotización ' + escapeHTML(quote.number) : 'Nueva cotización') + '</h2>' +
+      '<button type="button" class="modal-close" data-close aria-label="Cerrar">×</button></div>';
+
+    if (isEdit && quote.status === 'converted' && quote.convertedInvoiceId && getInvoice(quote.convertedInvoiceId)) {
+      html += '<div class="convert-banner"><span>Ya se convirtió en la factura ' + escapeHTML(getInvoice(quote.convertedInvoiceId).number) + '.</span>' +
+        '<button type="button" class="btn btn-ghost btn-small" id="open-converted-invoice-btn">Ver factura</button></div>';
+    }
+
+    html += '<form id="quote-form">' +
+      '<div class="form-grid" style="max-width:none;">' +
+      '<label>Cliente<select name="clientId">' + state.clients.map(function (c) {
+        return '<option value="' + c.id + '"' + (c.id === clientId ? ' selected' : '') + '>' + escapeHTML(c.name) + '</option>';
+      }).join('') + '</select></label>' +
+      '<div style="display:flex;gap:14px;">' +
+      '<label style="flex:1;">Emitida<input type="date" name="issueDate" value="' + issueDate + '"></label>' +
+      '<label style="flex:1;">Vence<input type="date" name="expiryDate" value="' + expiryDate + '"></label>' +
+      '<label style="flex:1;">Sales tax %<input type="number" name="taxRate" min="0" max="100" step="0.001" value="' + taxRate + '"></label>' +
+      '</div>';
+    if (isEdit) {
+      html += '<label>Estado<select name="status">' +
+        ['draft', 'sent', 'approved', 'declined'].map(function (s) {
+          return '<option value="' + s + '"' + (status === s ? ' selected' : '') + '>' + quoteStatusLabel(s) + '</option>';
+        }).join('') + '</select></label>';
+    }
+    html += '</div>' +
+      '<div class="modal-section"><h3>Conceptos</h3>' +
+      '<table class="line-items-table" id="quote-line-items-table"><thead><tr><th>Producto</th><th>Descripción</th><th>Cant.</th><th>Unidad</th><th>Precio</th><th>Total</th><th></th></tr></thead>' +
+      '<tbody id="quote-line-items-body"></tbody></table>' +
+      '<button type="button" class="btn btn-ghost btn-small" id="add-quote-line-btn">+ Agregar línea</button>' +
+      '<div class="totals-block" id="quote-totals-block"></div>' +
+      '</div>';
+
+    html += '<div class="modal-actions">';
+    if (isEdit) {
+      html += '<button type="button" class="btn btn-ghost" id="download-quote-pdf-btn">Descargar PDF</button>' +
+        '<button type="button" class="btn btn-ghost" id="send-quote-email-btn">Enviar por correo</button>';
+      if (quote.status !== 'converted') html += '<button type="button" class="btn btn-ghost" id="convert-quote-btn">Convertir a factura</button>';
+      html += '<button type="button" class="btn btn-danger" id="delete-quote-btn">Eliminar</button>';
+    }
+    html += '<button type="button" class="btn btn-ghost" data-close>Cancelar</button>' +
+      '<button type="submit" class="btn btn-primary">Guardar</button>' +
+      '</div></form>';
+
+    openModal(html);
+    var form = document.getElementById('quote-form');
+
+    function renderQuoteLineItems() {
+      document.getElementById('quote-line-items-body').innerHTML = quoteDraftItems.map(function (item, idx) {
+        var options = '<option value="">Personalizado</option>' + state.products.map(function (p) {
+          return '<option value="' + p.id + '"' + (item.catalogId === p.id ? ' selected' : '') + '>' + escapeHTML(p.name) + '</option>';
+        }).join('');
+        return '<tr data-idx="' + idx + '">' +
+          '<td><select class="li-catalog">' + options + '</select></td>' +
+          '<td><input type="text" class="li-desc" value="' + escapeHTML(item.description) + '"></td>' +
+          '<td><input type="number" class="li-qty qty" min="0" step="0.01" value="' + item.qty + '"></td>' +
+          '<td><input type="text" class="li-unit unit" value="' + escapeHTML(item.unit || '') + '" placeholder="hrs"></td>' +
+          '<td><input type="number" class="li-price price" min="0" step="0.01" value="' + item.price + '"></td>' +
+          '<td class="num">' + money((Number(item.qty) || 0) * (Number(item.price) || 0)) + '</td>' +
+          '<td><button type="button" class="line-item-remove" data-remove="' + idx + '" aria-label="Quitar línea">×</button></td>' +
+          '</tr>';
+      }).join('');
+      renderQuoteTotals();
+    }
+
+    function renderQuoteTotals() {
+      var subtotal = quoteDraftItems.reduce(function (s, it) { return s + (Number(it.qty) || 0) * (Number(it.price) || 0); }, 0);
+      var rate = Number(form.taxRate.value) || 0;
+      var tax = subtotal * rate / 100;
+      document.getElementById('quote-totals-block').innerHTML =
+        '<div class="totals-row"><span>Subtotal</span><span>' + money(subtotal) + '</span></div>' +
+        '<div class="totals-row"><span>Sales tax (' + rate + '%)</span><span>' + money(tax) + '</span></div>' +
+        '<div class="totals-row grand"><span>Total</span><span>' + money(subtotal + tax) + '</span></div>';
+    }
+
+    renderQuoteLineItems();
+
+    form.addEventListener('input', function (e) {
+      var tr = e.target.closest('tr[data-idx]');
+      if (tr) {
+        var idx = Number(tr.dataset.idx);
+        if (e.target.classList.contains('li-desc')) quoteDraftItems[idx].description = e.target.value;
+        if (e.target.classList.contains('li-qty')) quoteDraftItems[idx].qty = e.target.value;
+        if (e.target.classList.contains('li-unit')) quoteDraftItems[idx].unit = e.target.value;
+        if (e.target.classList.contains('li-price')) quoteDraftItems[idx].price = e.target.value;
+        tr.querySelector('.num').textContent = money((Number(quoteDraftItems[idx].qty) || 0) * (Number(quoteDraftItems[idx].price) || 0));
+        renderQuoteTotals();
+      }
+      if (e.target.name === 'taxRate') renderQuoteTotals();
+    });
+
+    form.addEventListener('change', function (e) {
+      if (e.target.classList.contains('li-catalog')) {
+        var tr = e.target.closest('tr[data-idx]');
+        var idx = Number(tr.dataset.idx);
+        var pid = e.target.value;
+        quoteDraftItems[idx].catalogId = pid;
+        if (pid) {
+          var p = getProduct(pid);
+          if (p) { quoteDraftItems[idx].description = p.description || p.name; quoteDraftItems[idx].price = p.price; quoteDraftItems[idx].unit = p.unit || ''; }
+        }
+        renderQuoteLineItems();
+      }
+    });
+
+    document.getElementById('add-quote-line-btn').addEventListener('click', function () {
+      quoteDraftItems.push(blankItem());
+      renderQuoteLineItems();
+    });
+
+    form.addEventListener('click', function (e) {
+      var idx = e.target.dataset.remove;
+      if (idx !== undefined) {
+        quoteDraftItems.splice(Number(idx), 1);
+        if (!quoteDraftItems.length) quoteDraftItems.push(blankItem());
+        renderQuoteLineItems();
+      }
+    });
+
+    if (isEdit) {
+      document.getElementById('download-quote-pdf-btn').addEventListener('click', function () { downloadQuotePDF(quote); });
+      document.getElementById('send-quote-email-btn').addEventListener('click', function () { sendQuoteEmail(quote); });
+      var convertBtn = document.getElementById('convert-quote-btn');
+      if (convertBtn) convertBtn.addEventListener('click', function () { convertQuoteToInvoice(quote); });
+      var openConvertedBtn = document.getElementById('open-converted-invoice-btn');
+      if (openConvertedBtn) openConvertedBtn.addEventListener('click', function () { closeModal(); openInvoiceModal(getInvoice(quote.convertedInvoiceId)); });
+      document.getElementById('delete-quote-btn').addEventListener('click', function () {
+        if (!confirm('¿Eliminar esta cotización?')) return;
+        state.quotes = state.quotes.filter(function (q) { return q.id !== quote.id; });
+        saveState();
+        closeModal();
+        renderView(currentViewFromHash());
+        toast('Cotización eliminada.');
+      });
+    }
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var fd = new FormData(form);
+      var items = quoteDraftItems
+        .map(function (it) { return { catalogId: it.catalogId || '', description: (it.description || '').trim(), qty: Number(it.qty) || 0, unit: (it.unit || '').trim(), price: Number(it.price) || 0 }; })
+        .filter(function (it) { return it.description && it.qty > 0; });
+      if (!items.length) { toast('Agrega al menos un concepto válido.'); return; }
+      var payload = {
+        clientId: fd.get('clientId'),
+        issueDate: fd.get('issueDate'),
+        expiryDate: fd.get('expiryDate'),
+        taxRate: Number(fd.get('taxRate')) || 0,
+        items: items
+      };
+      if (isEdit) {
+        payload.status = fd.get('status') || quote.status;
+        Object.assign(quote, payload);
+      } else {
+        payload.id = uid();
+        payload.number = nextQuotePreview();
+        payload.status = 'draft';
+        state.settings.nextQuoteNumber += 1;
+        state.quotes.push(payload);
+      }
+      saveState();
+      closeModal();
+      renderView(currentViewFromHash());
+      toast('Cotización guardada.');
+    });
+  }
+
+  function convertQuoteToInvoice(quote) {
+    if (quote.status === 'converted') { toast('Esta cotización ya fue convertida.'); return; }
+    if (!confirm('¿Convertir esta cotización en una factura nueva?')) return;
+    var issueDate = todayISO();
+    var invoice = {
+      id: uid(),
+      number: nextFolioPreview(),
+      clientId: quote.clientId,
+      issueDate: issueDate,
+      dueDate: addDaysISO(issueDate, state.settings.dueDays),
+      taxRate: quote.taxRate,
+      items: quote.items.map(function (it) { return Object.assign({}, it); }),
+      payments: []
+    };
+    state.settings.nextInvoiceNumber += 1;
+    state.invoices.push(invoice);
+    quote.status = 'converted';
+    quote.convertedInvoiceId = invoice.id;
+    saveState();
+    closeModal();
+    renderView(currentViewFromHash());
+    toast('Factura ' + invoice.number + ' creada a partir de la cotización.');
+  }
+
+  function downloadQuotePDF(q) {
+    var jsPDFCtor = window.jspdf && window.jspdf.jsPDF;
+    if (!jsPDFCtor) { toast('No se pudo generar el PDF.'); return; }
+    var doc = new jsPDFCtor({ unit: 'pt', format: 'letter' });
+    var c = getClient(q.clientId);
+    var s = state.settings;
+    var marginX = 40;
+    var y = 50;
+
+    if (s.logo) {
+      try { doc.addImage(s.logo, 'PNG', marginX, y - 10, 42, 42); } catch (e) {}
+    }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+    doc.text(s.companyName || 'Company', s.logo ? marginX + 54 : marginX, y + 10);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    if (s.ein) doc.text('EIN: ' + s.ein, s.logo ? marginX + 54 : marginX, y + 26);
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
+    doc.text('ESTIMATE', 555, y + 10, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    doc.text('Estimate #: ' + q.number, 555, y + 30, { align: 'right' });
+    doc.text('Issued: ' + fmtDateEN(q.issueDate), 555, y + 44, { align: 'right' });
+    doc.text('Valid until: ' + fmtDateEN(q.expiryDate), 555, y + 58, { align: 'right' });
+
+    y += 80;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+    doc.text('Prepared For', marginX, y);
+    doc.setFont('helvetica', 'normal');
+    var lines = [c ? c.name : ''];
+    if (c && c.address) lines.push(c.address);
+    if (c && c.email) lines.push(c.email);
+    lines.forEach(function (line, i) { doc.text(line, marginX, y + 16 + i * 14); });
+
+    y += 16 + lines.length * 14 + 20;
+
+    var body = q.items.map(function (it) {
+      return [it.description, String(it.qty), it.unit || '', money(it.price), money(it.qty * it.price)];
+    });
+    doc.autoTable({
+      startY: y,
+      margin: { left: marginX, right: marginX },
+      head: [['Description', 'Qty', 'Unit', 'Rate', 'Amount']],
+      body: body,
+      styles: { font: 'helvetica', fontSize: 10 },
+      headStyles: { fillColor: [28, 27, 24] }
+    });
+
+    var afterTableY = doc.lastAutoTable.finalY + 20;
+    var subtotal = quoteSubtotal(q), tax = quoteTaxAmount(q), total = quoteTotal(q);
+    var rows = [
+      ['Subtotal', money(subtotal)],
+      ['Sales tax (' + q.taxRate + '%)', money(tax)],
+      ['Total', money(total)]
+    ];
+    doc.setFontSize(10);
+    rows.forEach(function (r, i) {
+      var rowY = afterTableY + i * 16;
+      doc.setFont('helvetica', r[0] === 'Total' ? 'bold' : 'normal');
+      doc.text(r[0], 420, rowY);
+      doc.text(r[1], 555, rowY, { align: 'right' });
+    });
+
+    doc.save(q.number + '.pdf');
   }
 
   // ---------- pdf ----------
@@ -891,12 +1275,12 @@
     y += 16 + lines.length * 14 + 20;
 
     var body = inv.items.map(function (it) {
-      return [it.description, String(it.qty), money(it.price), money(it.qty * it.price)];
+      return [it.description, String(it.qty), it.unit || '', money(it.price), money(it.qty * it.price)];
     });
     doc.autoTable({
       startY: y,
       margin: { left: marginX, right: marginX },
-      head: [['Description', 'Qty', 'Rate', 'Amount']],
+      head: [['Description', 'Qty', 'Unit', 'Rate', 'Amount']],
       body: body,
       styles: { font: 'helvetica', fontSize: 10 },
       headStyles: { fillColor: [28, 27, 24] }
@@ -918,10 +1302,50 @@
       doc.text(r[1], 555, rowY, { align: 'right' });
     });
 
+    if (s.paymentLink) {
+      var payY = afterTableY + rows.length * 16 + 22;
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(181, 80, 46);
+      doc.textWithLink('Pay online →', marginX, payY, { url: s.paymentLink });
+      doc.setTextColor(0, 0, 0);
+    }
+
     doc.save(inv.number + '.pdf');
   }
 
   function fmtDateEN(iso) { return fmtDate(iso); }
+
+  function sendInvoiceEmail(inv) {
+    var c = getClient(inv.clientId);
+    if (!c || !c.email) { toast('Este cliente no tiene correo guardado.'); return; }
+    downloadInvoicePDF(inv);
+    var balance = invoiceBalance(inv);
+    var lines = [
+      'Hi ' + c.name + ',',
+      '',
+      'Please find attached invoice ' + inv.number + ' for ' + money(invoiceTotal(inv)) + ', due ' + fmtDateEN(inv.dueDate) + '.',
+      balance > 0 ? 'Balance due: ' + money(balance) + '.' : 'This invoice is fully paid — thank you!'
+    ];
+    if (state.settings.paymentLink && balance > 0) lines.push('You can pay online here: ' + state.settings.paymentLink);
+    lines.push('', 'The PDF was just downloaded to your device — please attach it to this email before sending.', '', 'Thank you,', state.settings.companyName || '');
+    openMailto(c.email, 'Invoice ' + inv.number + ' from ' + (state.settings.companyName || ''), lines.join('\n'));
+  }
+
+  function sendQuoteEmail(q) {
+    var c = getClient(q.clientId);
+    if (!c || !c.email) { toast('Este cliente no tiene correo guardado.'); return; }
+    downloadQuotePDF(q);
+    var lines = [
+      'Hi ' + c.name + ',',
+      '',
+      'Please find attached estimate ' + q.number + ' for ' + money(quoteTotal(q)) + ', valid until ' + fmtDateEN(q.expiryDate) + '.',
+      '',
+      'The PDF was just downloaded to your device — please attach it to this email before sending.',
+      '',
+      'Thank you,',
+      state.settings.companyName || ''
+    ];
+    openMailto(c.email, 'Estimate ' + q.number + ' from ' + (state.settings.companyName || ''), lines.join('\n'));
+  }
 
   // ---------- onboarding ----------
 
@@ -962,12 +1386,15 @@
     window.addEventListener('hashchange', function () { setView(currentViewFromHash()); });
 
     document.getElementById('new-invoice-btn').addEventListener('click', function () { openInvoiceModal(null); });
+    document.getElementById('new-quote-btn').addEventListener('click', function () { openQuoteModal(null); });
     document.getElementById('new-client-btn').addEventListener('click', function () { openClientModal(null); });
     document.getElementById('new-product-btn').addEventListener('click', function () { openProductModal(null); });
 
     document.getElementById('views').addEventListener('click', function (e) {
       var invRow = e.target.closest('[data-open-invoice]');
       var delInv = e.target.closest('[data-delete-invoice]');
+      var quoteRow = e.target.closest('[data-open-quote]');
+      var delQuote = e.target.closest('[data-delete-quote]');
       var cliRow = e.target.closest('[data-open-client]');
       var delCli = e.target.closest('[data-delete-client]');
       var prodRow = e.target.closest('[data-open-product]');
@@ -981,15 +1408,29 @@
         }
         return;
       }
+      if (delQuote) {
+        e.stopPropagation();
+        if (confirm('¿Eliminar esta cotización?')) {
+          state.quotes = state.quotes.filter(function (q) { return q.id !== delQuote.dataset.deleteQuote; });
+          saveState();
+          renderView(currentViewFromHash());
+        }
+        return;
+      }
       if (delCli) { e.stopPropagation(); deleteClient(delCli.dataset.deleteClient); return; }
       if (delProd) { e.stopPropagation(); deleteProduct(delProd.dataset.deleteProduct); return; }
       if (invRow) { openInvoiceModal(getInvoice(invRow.dataset.openInvoice)); return; }
+      if (quoteRow) { openQuoteModal(getQuote(quoteRow.dataset.openQuote)); return; }
       if (cliRow) { openClientModal(getClient(cliRow.dataset.openClient)); return; }
       if (prodRow) { openProductModal(getProduct(prodRow.dataset.openProduct)); return; }
     });
 
     document.getElementById('modal-root').addEventListener('click', function (e) {
-      if (e.target.closest('[data-close]')) closeModal();
+      if (e.target.closest('[data-close]')) { closeModal(); return; }
+      var invRow = e.target.closest('[data-open-invoice]');
+      var qRow = e.target.closest('[data-open-quote]');
+      if (invRow) { closeModal(); openInvoiceModal(getInvoice(invRow.dataset.openInvoice)); }
+      else if (qRow) { closeModal(); openQuoteModal(getQuote(qRow.dataset.openQuote)); }
     });
 
     document.getElementById('invoice-search').addEventListener('input', function (e) { invoiceFilters.search = e.target.value; renderInvoices(); });
@@ -1004,6 +1445,9 @@
       document.getElementById('invoice-to').value = '';
       renderInvoices();
     });
+
+    document.getElementById('quote-search').addEventListener('input', function (e) { quoteFilters.search = e.target.value; renderQuotes(); });
+    document.getElementById('quote-status-filter').addEventListener('change', function (e) { quoteFilters.status = e.target.value; renderQuotes(); });
 
     document.getElementById('client-search').addEventListener('input', function (e) { clientFilter = e.target.value; renderClients(); });
     document.getElementById('product-search').addEventListener('input', function (e) { productFilter = e.target.value; renderCatalog(); });
@@ -1046,6 +1490,23 @@
       saveState();
       renderSettings();
       toast('Facturación guardada.');
+    });
+
+    document.getElementById('settings-payment-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      state.settings.paymentLink = new FormData(this).get('paymentLink').trim();
+      saveState();
+      toast('Link de pago guardado.');
+    });
+
+    document.getElementById('settings-quotes-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var fd = new FormData(this);
+      state.settings.quotePrefix = fd.get('quotePrefix').trim() || 'EST-';
+      state.settings.nextQuoteNumber = Math.max(1, Number(fd.get('nextQuoteNumber')) || 1);
+      saveState();
+      renderSettings();
+      toast('Cotizaciones guardado.');
     });
 
     document.getElementById('settings-backup-form').addEventListener('submit', function (e) {
